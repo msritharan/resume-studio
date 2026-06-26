@@ -5,16 +5,21 @@ import { yaml } from '@codemirror/lang-yaml'
 import { EditorView } from '@codemirror/view'
 import {
   AlertCircle,
+  CheckCircle2,
   Clock3,
   Download,
   FileText,
+  GitBranch,
   GitCommitHorizontal,
   Loader2,
+  MoreHorizontal,
   PanelRightOpen,
   Plus,
   RotateCcw,
   Save,
   Sparkles,
+  Terminal,
+  X,
 } from 'lucide-react'
 
 import {
@@ -29,7 +34,6 @@ import {
   snapshotVariant,
 } from '@/api'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import {
   Card,
@@ -71,11 +75,12 @@ const LEFT_PANE = { default: 320, min: 220, max: 560 }
 const PREVIEW_PANE = { default: 430, min: 320, max: 760 }
 const EDITOR_MIN_WIDTH = 420
 const RESIZE_HANDLE_WIDTH = 10
+type RenderStatus = 'idle' | 'success' | 'error'
 
 const editorTheme = EditorView.theme({
   '&': {
-    backgroundColor: '#fffdf7',
-    color: '#181A1F',
+    backgroundColor: '#ffffff',
+    color: '#18201D',
     height: '100%',
     fontSize: '13px',
   },
@@ -85,15 +90,15 @@ const editorTheme = EditorView.theme({
     lineHeight: '1.6',
   },
   '.cm-gutters': {
-    backgroundColor: '#f6f3ea',
-    color: '#767064',
-    borderRight: '1px solid #d8d2c4',
+    backgroundColor: '#F7F8F5',
+    color: '#68716D',
+    borderRight: '1px solid #DCE2DD',
   },
   '.cm-activeLine, .cm-activeLineGutter': {
-    backgroundColor: '#efe9db',
+    backgroundColor: '#EEF3EF',
   },
   '.cm-content': {
-    caretColor: '#2D68D8',
+    caretColor: '#0F6B5F',
   },
   '&.cm-focused': {
     outline: '2px solid color-mix(in oklch, var(--ring), transparent 45%)',
@@ -131,8 +136,11 @@ function App() {
   const [dirty, setDirty] = useState(false)
   const [diskChanged, setDiskChanged] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [renderError, setRenderError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [renderOutput, setRenderOutput] = useState('')
+  const [renderStatus, setRenderStatus] = useState<RenderStatus>('idle')
+  const [renderDialogOpen, setRenderDialogOpen] = useState(false)
   const [variantName, setVariantName] = useState('')
   const [snapshotMessage, setSnapshotMessage] = useState('')
   const [action, setAction] = useState<Action>(null)
@@ -143,10 +151,10 @@ function App() {
   const initialized = workspace?.initialized ?? false
 
   const draftLabel = useMemo(() => {
-    if (diskChanged && dirty) return 'Disk changed; browser has edits'
-    if (diskChanged) return 'Disk changed; reload to update'
+    if (diskChanged && dirty) return 'Disk changed with browser edits'
+    if (diskChanged) return 'Disk changed'
     if (dirty) return 'Unsaved changes'
-    return 'Clean draft'
+    return null
   }, [dirty, diskChanged])
 
   useEffect(() => {
@@ -199,14 +207,25 @@ function App() {
     mutation: () => Promise<T>,
     onSuccess: (result: T) => void,
     successMessage: string,
-  ) {
+  ): Promise<boolean> {
     setAction(nextAction)
     setError(null)
     setMessage(null)
+    if (nextAction === 'render') {
+      setRenderOutput('')
+      setRenderError(null)
+      setRenderStatus('idle')
+      setRenderDialogOpen(false)
+    }
     try {
       const result = await mutation()
       onSuccess(result)
       setMessage(successMessage)
+      if (nextAction === 'render') {
+        setRenderStatus('success')
+        setRenderDialogOpen(true)
+      }
+      return true
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 409) {
         setDiskChanged(true)
@@ -214,7 +233,15 @@ function App() {
       if (caught instanceof ApiError && caught.renderOutput) {
         setRenderOutput(caught.renderOutput)
       }
-      setError(messageFromError(caught))
+      const errorMessage = messageFromError(caught)
+      if (nextAction === 'render') {
+        setRenderStatus('error')
+        setRenderError(errorMessage)
+        setRenderDialogOpen(true)
+      } else {
+        setError(errorMessage)
+      }
+      return false
     } finally {
       setAction(null)
     }
@@ -226,7 +253,7 @@ function App() {
 
   async function handleCreateVariant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    await runMutation(
+    return runMutation(
       'create',
       () => createVariant(variantName, selected),
       (next) => {
@@ -247,6 +274,16 @@ function App() {
   }
 
   async function handleRender() {
+    if (dirty) {
+      const saved = await runMutation(
+        'save',
+        () => saveResume(selected, editorContent, expectedHash, false),
+        applyWorkspace,
+        'Saved changes.',
+      )
+      if (!saved) return
+    }
+
     await runMutation(
       'render',
       () => renderVariant(selected),
@@ -254,13 +291,13 @@ function App() {
         applyWorkspace(result.workspace)
         setRenderOutput(result.output)
       },
-      'Rendered preview.',
+      'Preview rendered.',
     )
   }
 
   async function handleSnapshot(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    await runMutation(
+    return runMutation(
       'snapshot',
       () => snapshotVariant(selected, snapshotMessage),
       (next) => {
@@ -272,7 +309,7 @@ function App() {
   }
 
   async function handleRestore(commit: string) {
-    await runMutation(
+    return runMutation(
       'restore',
       () => restoreVariant(selected, commit),
       applyWorkspace,
@@ -283,6 +320,9 @@ function App() {
   function handleSelectVariant(variant: string) {
     setMessage(null)
     setRenderOutput('')
+    setRenderError(null)
+    setRenderStatus('idle')
+    setRenderDialogOpen(false)
     void loadWorkspace(variant)
   }
 
@@ -302,7 +342,7 @@ function App() {
         <section className="mx-auto grid min-h-[calc(100svh-73px)] w-full max-w-5xl place-items-center px-5 py-10">
           <Card className="w-full max-w-xl border-dashed bg-card/90">
             <CardHeader>
-              <CardTitle className="font-display text-2xl">Begin with a base resume</CardTitle>
+              <CardTitle className="type-title">Begin with a base resume</CardTitle>
               <CardDescription>
                 Initialize a local RenderCV workspace with a base YAML resume and Git
                 snapshots.
@@ -355,24 +395,22 @@ function App() {
                 dirty={dirty}
                 diskChanged={diskChanged}
                 error={error}
-                message={message}
                 onChange={handleEditorChange}
                 onOverwrite={() => void handleSave(true)}
                 onRender={handleRender}
                 onSave={() => void handleSave(false)}
                 onSnapshot={handleSnapshot}
-                renderOutput={renderOutput}
                 selected={selected}
                 setSnapshotMessage={setSnapshotMessage}
                 snapshotMessage={snapshotMessage}
-                updatedAt={workspace?.updated_at ?? 'missing'}
               />
             }
             preview={
               <PreviewPanel
+                error={renderError}
                 pdfUrl={workspace?.pdf_url ?? null}
                 previewUrl={workspace?.preview_url ?? null}
-                renderOutput={renderOutput}
+                renderStatus={renderStatus}
               />
             }
             variants={
@@ -406,24 +444,31 @@ function App() {
               dirty={dirty}
               diskChanged={diskChanged}
               error={error}
-              message={message}
               onChange={handleEditorChange}
               onOverwrite={() => void handleSave(true)}
               onRender={handleRender}
               onSave={() => void handleSave(false)}
               onSnapshot={handleSnapshot}
-              renderOutput={renderOutput}
               selected={selected}
               setSnapshotMessage={setSnapshotMessage}
               snapshotMessage={snapshotMessage}
-              updatedAt={workspace?.updated_at ?? 'missing'}
             />
             <PreviewPanel
+              error={renderError}
               pdfUrl={workspace?.pdf_url ?? null}
               previewUrl={workspace?.preview_url ?? null}
-              renderOutput={renderOutput}
+              renderStatus={renderStatus}
             />
           </div>
+        )}
+
+        {renderDialogOpen && (
+          <RenderResultDialog
+            error={renderError}
+            onClose={() => setRenderDialogOpen(false)}
+            output={renderOutput}
+            status={renderStatus}
+          />
         )}
       </section>
     </main>
@@ -580,18 +625,13 @@ function LoadingShell() {
 
 function TopBar({ workspacePath }: { workspacePath: string }) {
   return (
-    <header className="flex min-h-[73px] items-center justify-between gap-4 border-b bg-background/95 px-4 py-3">
+    <header className="flex min-h-[73px] items-center justify-between gap-4 border-b bg-card/85 px-4 py-3 shadow-[0_1px_0_rgba(24,32,29,0.03)]">
       <div className="min-w-0">
-        <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-          Local workbench
-        </p>
-        <h1 className="font-display text-2xl font-semibold leading-tight">
-          Resume Studio
-        </h1>
+        <h1 className="type-title text-foreground">Resume Studio</h1>
       </div>
       <Tooltip>
         <TooltipTrigger
-          className="max-w-[52vw] truncate rounded-md border bg-card px-3 py-1.5 font-mono text-xs text-muted-foreground"
+          className="type-code max-w-[52vw] truncate rounded-md border bg-background/70 px-3 py-1.5 text-muted-foreground"
           aria-label="Workspace path"
         >
           {workspacePath || 'Workspace not initialized'}
@@ -608,22 +648,26 @@ function StatusStrip({
   updatedAt,
   variant,
 }: {
-  dirtyLabel: string
+  dirtyLabel: string | null
   message: string | null
   updatedAt: string
   variant: string
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 shadow-[0_1px_0_rgba(24,32,29,0.03)]">
       <div className="flex min-w-0 items-center gap-2">
-        <Badge variant="secondary">variants/{variant}/resume.yaml</Badge>
-        <span className="truncate text-muted-foreground">Last changed {updatedAt}</span>
+        <span className="type-code inline-flex items-center rounded-md border bg-secondary/65 px-3 py-1 text-foreground">
+          variants/{variant}/resume.yaml
+        </span>
+        <span className="type-meta truncate">Last changed {updatedAt}</span>
       </div>
       <div className="flex items-center gap-2">
-        {message && <span className="text-primary">{message}</span>}
-        <Badge variant={dirtyLabel === 'Clean draft' ? 'outline' : 'default'}>
-          {dirtyLabel}
-        </Badge>
+        {message && <span className="type-meta font-medium text-primary">{message}</span>}
+        {dirtyLabel && (
+          <span className="type-meta inline-flex items-center rounded-full border border-primary/20 bg-primary/8 px-2.5 py-1 font-medium text-primary">
+            {dirtyLabel}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -638,9 +682,57 @@ function RevisionRail({ tone = 'neutral' }: { tone?: 'blue' | 'amber' | 'red' | 
         tone === 'blue' && 'bg-primary',
         tone === 'amber' && 'bg-[color:var(--revision-amber)]',
         tone === 'red' && 'bg-destructive',
-        tone === 'neutral' && 'bg-muted-foreground/35',
+        tone === 'neutral' && 'bg-border',
       )}
     />
+  )
+}
+
+function ModalShell({
+  children,
+  description,
+  onClose,
+  title,
+}: {
+  children: ReactNode
+  description: string
+  onClose: () => void
+  title: string
+}) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  return (
+    <div
+      aria-describedby="modal-description"
+      aria-labelledby="modal-title"
+      aria-modal="true"
+      className="fixed inset-0 z-50 grid place-items-center bg-foreground/25 p-4"
+      role="dialog"
+    >
+      <div className="flex w-full max-w-md flex-col gap-4 rounded-lg border bg-card p-4 text-card-foreground shadow-lg">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="type-section" id="modal-title">
+              {title}
+            </h2>
+            <p className="type-meta mt-1" id="modal-description">
+              {description}
+            </p>
+          </div>
+          <Button aria-label="Close" onClick={onClose} size="icon-sm" type="button" variant="ghost">
+            <X />
+          </Button>
+        </div>
+        {children}
+      </div>
+    </div>
   )
 }
 
@@ -655,37 +747,85 @@ function VariantPanel({
   workspace,
 }: {
   action: Action
-  onCreate: (event: FormEvent<HTMLFormElement>) => void
-  onRestore: (commit: string) => void
+  onCreate: (event: FormEvent<HTMLFormElement>) => Promise<boolean>
+  onRestore: (commit: string) => Promise<boolean>
   onSelect: (variant: string) => void
   selected: string
   setVariantName: (value: string) => void
   variantName: string
   workspace: Workspace | null
 }) {
+  const [createOpen, setCreateOpen] = useState(false)
+  const [openHistoryAction, setOpenHistoryAction] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!openHistoryAction) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenHistoryAction(null)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [openHistoryAction])
+
+  async function handleCreateSubmit(event: FormEvent<HTMLFormElement>) {
+    const ok = await onCreate(event)
+    if (ok) setCreateOpen(false)
+  }
+
+  function closeCreateDialog() {
+    setVariantName('')
+    setCreateOpen(false)
+  }
+
+  async function handleRestoreFromMenu(commit: string) {
+    const ok = await onRestore(commit)
+    if (ok) setOpenHistoryAction(null)
+  }
+
   return (
-    <Card className="h-full rounded-lg">
+    <Card className="h-full rounded-lg shadow-[0_1px_0_rgba(24,32,29,0.03)]">
       <CardHeader>
-        <CardTitle>Variants</CardTitle>
-        <CardDescription>Tailored resumes from one base document.</CardDescription>
+        <div>
+          <CardTitle>Variants</CardTitle>
+        </div>
+        <CardAction>
+          <Button onClick={() => setCreateOpen(true)} size="sm" type="button" variant="outline">
+            <Plus data-icon="inline-start" />
+            New variant
+          </Button>
+        </CardAction>
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col gap-4">
-        <ScrollArea className="min-h-36 flex-1 pr-3">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-5">
+        <ScrollArea className="min-h-32 flex-1 pr-3">
           <nav className="flex flex-col gap-1" aria-label="Resume variants">
             {workspace?.variants.map((variant) => (
               <button
                 className={cn(
-                  'grid grid-cols-[4px_1fr] gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted',
-                  variant.name === selected && 'bg-primary/10',
+                  'grid grid-cols-[18px_1fr] gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-muted/80',
+                  variant.name === selected && 'bg-primary/10 ring-1 ring-primary/15',
                 )}
                 key={variant.name}
                 onClick={() => onSelect(variant.name)}
                 type="button"
               >
-                <RevisionRail tone={variant.name === selected ? 'blue' : 'neutral'} />
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">{variant.name}</span>
-                  <span className="text-xs text-muted-foreground">
+                <span className="relative flex justify-center">
+                  <span className="absolute bottom-[-0.6rem] top-5 w-px bg-border" />
+                  <span
+                    className={cn(
+                      'relative mt-0.5 grid size-4 place-items-center rounded-full border bg-card',
+                      variant.name === selected && 'border-primary bg-primary text-primary-foreground',
+                    )}
+                  >
+                    <GitBranch className="size-2.5" />
+                  </span>
+                </span>
+                <span className="min-w-0 space-y-0.5">
+                  <span className="type-item-title block truncate text-foreground">
+                    {variant.name}
+                  </span>
+                  <span className="type-meta block">
                     {variant.has_pdf ? 'Preview ready' : 'No preview'}
                   </span>
                 </span>
@@ -696,70 +836,108 @@ function VariantPanel({
 
         <Separator />
 
-        <form className="flex flex-col gap-3" onSubmit={onCreate}>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="variant-name">New variant</FieldLabel>
-              <Input
-                autoComplete="off"
-                id="variant-name"
-                onChange={(event) => setVariantName(event.target.value)}
-                placeholder="openai-backend"
-                value={variantName}
-              />
-              <FieldDescription>Copies from the selected variant.</FieldDescription>
-            </Field>
-          </FieldGroup>
-          <Button disabled={action === 'create'} type="submit" variant="secondary">
-            {action === 'create' ? (
-              <Loader2 data-icon="inline-start" className="animate-spin" />
-            ) : (
-              <Plus data-icon="inline-start" />
-            )}
-            New variant
-          </Button>
-        </form>
-
-        <Separator />
-
         <section className="flex min-h-0 flex-1 flex-col gap-3">
           <div>
-            <h2 className="font-medium">History</h2>
-            <p className="text-sm text-muted-foreground">Snapshots for this variant.</p>
+            <h2 className="type-subsection">Snapshots</h2>
+            <p className="type-meta">Saved points for the selected variant.</p>
           </div>
           <ScrollArea className="min-h-36 flex-1 pr-3">
             {workspace?.history.length ? (
-              <ol className="flex flex-col gap-3">
+              <ol className="flex flex-col">
                 {workspace.history.map((entry) => (
-                  <li className="grid grid-cols-[4px_1fr] gap-3" key={entry.commit}>
-                    <RevisionRail />
-                    <div className="min-w-0 rounded-md border bg-background p-2">
-                      <p className="truncate text-sm font-medium">{entry.message}</p>
-                      <p className="font-mono text-xs text-muted-foreground">
-                        {entry.date} · {entry.short_commit}
-                      </p>
+                  <li className="grid grid-cols-[18px_1fr] gap-3" key={entry.commit}>
+                    <span className="relative flex justify-center">
+                      <span className="absolute bottom-0 top-5 w-px bg-border" />
+                      <span className="relative mt-1 size-3 rounded-full border border-primary bg-card" />
+                    </span>
+                    <div className="relative flex min-w-0 items-start justify-between gap-2 rounded-md px-2 py-2 hover:bg-muted/70">
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="type-item-title truncate text-foreground">
+                          {entry.message}
+                        </p>
+                        <p className="type-code text-muted-foreground">
+                          {entry.date} · {entry.short_commit}
+                        </p>
+                      </div>
                       <Button
-                        className="mt-2 px-0"
-                        disabled={action === 'restore'}
-                        onClick={() => onRestore(entry.commit)}
-                        size="sm"
+                        aria-label={`Snapshot actions for ${entry.message}`}
+                        onClick={() =>
+                          setOpenHistoryAction((commit) =>
+                            commit === entry.commit ? null : entry.commit,
+                          )
+                        }
+                        size="icon-sm"
                         type="button"
-                        variant="link"
+                        variant="ghost"
                       >
-                        <RotateCcw data-icon="inline-start" />
-                        Restore as draft
+                        <MoreHorizontal />
                       </Button>
+                      {openHistoryAction === entry.commit && (
+                        <div className="absolute right-2 top-9 z-10 w-44 rounded-md border bg-popover p-1 shadow-md">
+                          <Button
+                            className="w-full justify-start"
+                            disabled={action === 'restore'}
+                            onClick={() => void handleRestoreFromMenu(entry.commit)}
+                            size="sm"
+                            type="button"
+                            variant="ghost"
+                          >
+                            {action === 'restore' ? (
+                              <Loader2 data-icon="inline-start" className="animate-spin" />
+                            ) : (
+                              <RotateCcw data-icon="inline-start" />
+                            )}
+                            Restore as draft
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </li>
                 ))}
               </ol>
             ) : (
-              <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+              <p className="type-meta rounded-md border border-dashed p-3">
                 No snapshots for this variant yet.
               </p>
             )}
           </ScrollArea>
         </section>
+        {createOpen && (
+          <ModalShell
+            description={`Copies from the selected variant: ${selected}.`}
+            onClose={closeCreateDialog}
+            title="New variant"
+          >
+            <form className="flex flex-col gap-4" onSubmit={handleCreateSubmit}>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="variant-name">Variant name</FieldLabel>
+                  <Input
+                    autoComplete="off"
+                    id="variant-name"
+                    onChange={(event) => setVariantName(event.target.value)}
+                    placeholder="openai-backend"
+                    value={variantName}
+                  />
+                  <FieldDescription>Copies from the selected variant.</FieldDescription>
+                </Field>
+              </FieldGroup>
+              <div className="flex justify-end gap-2">
+                <Button onClick={closeCreateDialog} type="button" variant="outline">
+                  Cancel
+                </Button>
+                <Button disabled={action === 'create'} type="submit">
+                  {action === 'create' ? (
+                    <Loader2 data-icon="inline-start" className="animate-spin" />
+                  ) : (
+                    <Plus data-icon="inline-start" />
+                  )}
+                  Create variant
+                </Button>
+              </div>
+            </form>
+          </ModalShell>
+        )}
       </CardContent>
     </Card>
   )
@@ -785,37 +963,33 @@ function EditorPanel({
   dirty: boolean
   diskChanged: boolean
   error: string | null
-  message: string | null
   onChange: (value: string) => void
   onOverwrite: () => void
   onRender: () => void
   onSave: () => void
-  onSnapshot: (event: FormEvent<HTMLFormElement>) => void
-  renderOutput: string
+  onSnapshot: (event: FormEvent<HTMLFormElement>) => Promise<boolean>
   selected: string
   setSnapshotMessage: (value: string) => void
   snapshotMessage: string
-  updatedAt: string
 }) {
+  const [snapshotOpen, setSnapshotOpen] = useState(false)
+
+  async function handleSnapshotSubmit(event: FormEvent<HTMLFormElement>) {
+    const ok = await onSnapshot(event)
+    if (ok) setSnapshotOpen(false)
+  }
+
+  function closeSnapshotDialog() {
+    setSnapshotMessage('')
+    setSnapshotOpen(false)
+  }
+
   return (
-    <Card className="h-full rounded-lg">
+    <Card className="h-full rounded-lg shadow-[0_1px_0_rgba(24,32,29,0.03)]">
       <CardHeader>
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            Editing
-          </p>
-          <CardTitle className="font-mono text-sm">variants/{selected}/resume.yaml</CardTitle>
+          <CardTitle>Editor</CardTitle>
         </div>
-        <CardAction>
-          <Button disabled={action === 'render'} onClick={onRender} type="button" variant="outline">
-            {action === 'render' ? (
-              <Loader2 data-icon="inline-start" className="animate-spin" />
-            ) : (
-              <PanelRightOpen data-icon="inline-start" />
-            )}
-            Render preview
-          </Button>
-        </CardAction>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col gap-3">
         {error && (
@@ -835,7 +1009,7 @@ function EditorPanel({
             </AlertDescription>
           </Alert>
         )}
-        <div className="min-h-[460px] flex-1 overflow-hidden rounded-lg border bg-background">
+        <div className="min-h-[460px] flex-1 overflow-hidden rounded-lg border bg-card">
           <CodeMirror
             aria-label="Resume YAML editor"
             basicSetup={{
@@ -850,79 +1024,108 @@ function EditorPanel({
             value={content}
           />
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button disabled={action === 'save'} onClick={onSave} type="button">
-              {action === 'save' ? (
-                <Loader2 data-icon="inline-start" className="animate-spin" />
-              ) : (
-                <Save data-icon="inline-start" />
-              )}
-              Save changes
-            </Button>
-            {diskChanged && dirty && (
-              <Button
-                disabled={action === 'overwrite'}
-                onClick={onOverwrite}
-                type="button"
-                variant="destructive"
-              >
-                {action === 'overwrite' ? (
-                  <Loader2 data-icon="inline-start" className="animate-spin" />
-                ) : (
-                  <AlertCircle data-icon="inline-start" />
-                )}
-                Overwrite disk file
-              </Button>
-            )}
-          </div>
-          <Badge variant={dirty ? 'default' : 'outline'}>
-            {dirty ? 'Unsaved changes' : 'Clean draft'}
-          </Badge>
-        </div>
-        <Separator />
-        <form className="flex flex-wrap gap-2" onSubmit={onSnapshot}>
-          <Input
-            aria-label="Snapshot message"
-            className="min-w-64 flex-1"
-            onChange={(event) => setSnapshotMessage(event.target.value)}
-            placeholder="Snapshot message, e.g. Tailor backend summary"
-            value={snapshotMessage}
-          />
-          <Button disabled={action === 'snapshot'} type="submit" variant="secondary">
-            {action === 'snapshot' ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button disabled={action === 'save'} onClick={onSave} type="button">
+            {action === 'save' ? (
               <Loader2 data-icon="inline-start" className="animate-spin" />
             ) : (
-              <GitCommitHorizontal data-icon="inline-start" />
+              <Save data-icon="inline-start" />
             )}
-            Snapshot version
+            Save changes
           </Button>
-        </form>
+          <Button disabled={action === 'render'} onClick={onRender} type="button" variant="outline">
+            {action === 'render' ? (
+              <Loader2 data-icon="inline-start" className="animate-spin" />
+            ) : (
+              <PanelRightOpen data-icon="inline-start" />
+            )}
+            Render preview
+          </Button>
+          <Button
+            disabled={action === 'snapshot'}
+            onClick={() => setSnapshotOpen(true)}
+            type="button"
+            variant="secondary"
+          >
+            <GitCommitHorizontal data-icon="inline-start" />
+            Create snapshot
+          </Button>
+          {diskChanged && dirty && (
+            <Button
+              disabled={action === 'overwrite'}
+              onClick={onOverwrite}
+              type="button"
+              variant="destructive"
+            >
+              {action === 'overwrite' ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <AlertCircle data-icon="inline-start" />
+              )}
+              Overwrite disk file
+            </Button>
+          )}
+        </div>
+        {snapshotOpen && (
+          <ModalShell
+            description={`Create a Git snapshot for variants/${selected}/resume.yaml.`}
+            onClose={closeSnapshotDialog}
+            title="Create snapshot"
+          >
+            <form className="flex flex-col gap-4" onSubmit={handleSnapshotSubmit}>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="snapshot-message">Snapshot message</FieldLabel>
+                  <Input
+                    autoComplete="off"
+                    id="snapshot-message"
+                    onChange={(event) => setSnapshotMessage(event.target.value)}
+                    placeholder="Tailor backend summary"
+                    value={snapshotMessage}
+                  />
+                  <FieldDescription>Describe the saved resume change.</FieldDescription>
+                </Field>
+              </FieldGroup>
+              <div className="flex justify-end gap-2">
+                <Button onClick={closeSnapshotDialog} type="button" variant="outline">
+                  Cancel
+                </Button>
+                <Button disabled={action === 'snapshot'} type="submit">
+                  {action === 'snapshot' ? (
+                    <Loader2 data-icon="inline-start" className="animate-spin" />
+                  ) : (
+                    <GitCommitHorizontal data-icon="inline-start" />
+                  )}
+                  Create snapshot
+                </Button>
+              </div>
+            </form>
+          </ModalShell>
+        )}
       </CardContent>
     </Card>
   )
 }
 
 function PreviewPanel({
+  error,
   pdfUrl,
   previewUrl,
-  renderOutput,
+  renderStatus,
 }: {
+  error: string | null
   pdfUrl: string | null
   previewUrl: string | null
-  renderOutput: string
+  renderStatus: RenderStatus
 }) {
   return (
-    <Card className="h-full rounded-lg">
+    <Card className="h-full rounded-lg shadow-[0_1px_0_rgba(24,32,29,0.03)]">
       <CardHeader>
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            Final artifact
-          </p>
-          <CardTitle>PDF Preview</CardTitle>
+          <CardTitle>Preview</CardTitle>
         </div>
-        {pdfUrl && (
-          <CardAction>
+        <CardAction className="flex items-center gap-1">
+          {pdfUrl && (
             <a
               className={buttonVariants({ variant: 'outline' })}
               href={pdfUrl}
@@ -932,14 +1135,16 @@ function PreviewPanel({
               <Download data-icon="inline-start" />
               Export PDF
             </a>
-          </CardAction>
-        )}
+          )}
+        </CardAction>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col gap-3">
-        {renderOutput && (
-          <pre className="max-h-44 overflow-auto rounded-md border bg-muted p-3 font-mono text-xs text-muted-foreground">
-            {renderOutput}
-          </pre>
+        {renderStatus === 'error' && (
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertTitle>Render failed</AlertTitle>
+            <AlertDescription>{error ?? 'RenderCV could not render this variant.'}</AlertDescription>
+          </Alert>
         )}
         {previewUrl ? (
           <div className="min-h-[520px] flex-1 overflow-auto rounded-lg border bg-white p-3">
@@ -951,12 +1156,12 @@ function PreviewPanel({
           </div>
         ) : (
           <div className="grid min-h-[420px] flex-1 place-items-center rounded-lg border border-dashed bg-background p-6 text-center">
-            <div className="flex max-w-xs flex-col items-center gap-3 text-muted-foreground">
+            <div className="flex max-w-xs flex-col items-center gap-3 text-center text-muted-foreground">
               {pdfUrl ? <FileText /> : <RevisionRail />}
-              <p>
+              <p className="type-meta">
                 {pdfUrl
                   ? 'RenderCV did not produce an image preview for this PDF.'
-                  : 'Render this variant to preview the PDF.'}
+                  : 'Render this variant to see the PDF preview.'}
               </p>
               {pdfUrl && (
                 <a
@@ -973,6 +1178,51 @@ function PreviewPanel({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+function RenderResultDialog({
+  error,
+  onClose,
+  output,
+  status,
+}: {
+  error: string | null
+  onClose: () => void
+  output: string
+  status: RenderStatus
+}) {
+  const hasLogs = output.trim().length > 0
+  const title = status === 'error' ? 'Render failed' : 'Preview rendered.'
+  const description =
+    status === 'error'
+      ? error ?? 'RenderCV could not render this variant.'
+      : 'The latest PDF is ready to review or export.'
+
+  return (
+    <ModalShell description={description} onClose={onClose} title={title}>
+      <div className="flex flex-col gap-3">
+        <Alert
+          className={status === 'success' ? 'border-primary/25 bg-primary/5' : undefined}
+          variant={status === 'error' ? 'destructive' : 'default'}
+        >
+          {status === 'error' ? <AlertCircle /> : <CheckCircle2 />}
+          <AlertTitle>{title}</AlertTitle>
+          <AlertDescription>{description}</AlertDescription>
+        </Alert>
+        {hasLogs && (
+          <div className="flex flex-col gap-2">
+            <div className="type-subsection flex items-center gap-2">
+              <Terminal className="h-4 w-4" />
+              Render logs
+            </div>
+            <pre className="type-code max-h-64 overflow-auto rounded-md border bg-muted/70 p-3 text-muted-foreground">
+              {output}
+            </pre>
+          </div>
+        )}
+      </div>
+    </ModalShell>
   )
 }
 

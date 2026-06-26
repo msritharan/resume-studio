@@ -158,6 +158,19 @@ describe('Resume Studio app', () => {
     )
   })
 
+  it('keeps the clean state quiet instead of showing a saved badge', async () => {
+    mockFetch((input) => {
+      if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
+      return jsonResponse({ hash: 'hash-base', mtime_ns: 1 })
+    })
+
+    renderApp()
+
+    await screen.findByText('Resume Studio')
+    expect(screen.queryByText('Saved')).not.toBeInTheDocument()
+    expect(screen.queryByText('Clean draft')).not.toBeInTheDocument()
+  })
+
   it('tracks dirty editor state and saves changes', async () => {
     const savedWorkspace = {
       ...baseWorkspace,
@@ -212,7 +225,7 @@ describe('Resume Studio app', () => {
     expect(screen.getByRole('button', { name: /overwrite disk file/i })).toBeInTheDocument()
   })
 
-  it('renders preview output and embedded PDF controls on desktop', async () => {
+  it('renders preview in a dismissible popup on desktop', async () => {
     const renderedWorkspace = {
       ...baseWorkspace,
       pdf_url: '/variants/base/pdf',
@@ -230,7 +243,8 @@ describe('Resume Studio app', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /render preview/i }))
 
-    expect(await screen.findByText('rendered ok')).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: /preview rendered\./i })).toBeInTheDocument()
+    expect(screen.getByText('rendered ok')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /export pdf/i })).toHaveAttribute(
       'href',
       '/variants/base/pdf',
@@ -238,6 +252,77 @@ describe('Resume Studio app', () => {
     expect(screen.getByAltText('Rendered resume preview')).toHaveAttribute(
       'src',
       '/variants/base/preview.png?v=3',
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /close/i }))
+    expect(screen.queryByText('rendered ok')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /preview rendered\./i })).not.toBeInTheDocument()
+  })
+
+  it('shows render failure status with diagnostic logs in the popup', async () => {
+    mockFetch((input, init) => {
+      if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
+      if (String(input) === '/api/variants/base/render' && init?.method === 'POST') {
+        return jsonResponse(
+          {
+            detail: 'RenderCV could not render this variant.',
+            render_output: 'line 12: missing required field',
+          },
+          400,
+        )
+      }
+      return jsonResponse({ hash: 'hash-base', mtime_ns: 1 })
+    })
+
+    renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: /render preview/i }))
+
+    expect(await screen.findByRole('dialog', { name: /render failed/i })).toBeInTheDocument()
+    expect(screen.getAllByText('RenderCV could not render this variant.').length).toBeGreaterThan(0)
+    expect(screen.getByText('line 12: missing required field')).toBeInTheDocument()
+  })
+
+  it('saves unsaved editor changes before rendering', async () => {
+    const savedWorkspace = {
+      ...baseWorkspace,
+      content: 'cv:\n  name: Edited Before Render\n',
+      state: { hash: 'hash-saved', mtime_ns: 3 },
+    }
+    const renderedWorkspace = {
+      ...savedWorkspace,
+      pdf_url: '/variants/base/pdf',
+      preview_url: '/variants/base/preview.png?v=4',
+    }
+    const fetchMock = mockFetch((input, init) => {
+      if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
+      if (String(input) === '/api/variants/base/resume' && init?.method === 'PUT') {
+        return jsonResponse(savedWorkspace)
+      }
+      if (String(input) === '/api/variants/base/render' && init?.method === 'POST') {
+        return jsonResponse({ workspace: renderedWorkspace, output: 'rendered after save' })
+      }
+      return jsonResponse({ hash: 'hash-base', mtime_ns: 1 })
+    })
+
+    renderApp()
+
+    const editor = await screen.findByLabelText('Resume YAML editor')
+    await userEvent.clear(editor)
+    await userEvent.type(editor, 'cv:\n  name: Edited Before Render\n')
+    await userEvent.click(screen.getByRole('button', { name: /render preview/i }))
+
+    await screen.findByRole('dialog', { name: /preview rendered\./i })
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/variants/base/resume',
+      expect.objectContaining({ method: 'PUT' }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/variants/base/render',
+      expect.objectContaining({ method: 'POST' }),
     )
   })
 
@@ -272,7 +357,7 @@ describe('Resume Studio app', () => {
     expect(screen.queryByLabelText('Rendered resume PDF')).not.toBeInTheDocument()
   })
 
-  it('exposes independent desktop resize handles for variants and preview panes', async () => {
+  it('keeps the variants panel non-collapsible on desktop', async () => {
     mockFetch((input) => {
       if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
       return jsonResponse({ hash: 'hash-base', mtime_ns: 1 })
@@ -283,6 +368,8 @@ describe('Resume Studio app', () => {
     await screen.findAllByText('variants/base/resume.yaml')
     expect(screen.getByRole('separator', { name: /resize variants panel/i })).toBeInTheDocument()
     expect(screen.getByRole('separator', { name: /resize preview panel/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /minimize variants panel/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /expand variants panel/i })).not.toBeInTheDocument()
   })
 
   it('submits a snapshot message', async () => {
@@ -307,12 +394,69 @@ describe('Resume Studio app', () => {
 
     renderApp()
 
+    await userEvent.click(await screen.findByRole('button', { name: /create snapshot/i }))
     const snapshotInput = await screen.findByLabelText('Snapshot message')
     await userEvent.type(snapshotInput, 'Tailor backend summary')
-    await userEvent.click(screen.getByRole('button', { name: /snapshot version/i }))
+    const createSnapshotButtons = screen.getAllByRole('button', { name: /create snapshot/i })
+    await userEvent.click(createSnapshotButtons[createSnapshotButtons.length - 1])
 
     await waitFor(() => expect(screen.getByText('Snapshot saved.')).toBeInTheDocument())
     const snapshotBody = JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))
     expect(snapshotBody).toEqual({ message: 'Tailor backend summary' })
+  })
+
+  it('creates a variant from the new variant dialog', async () => {
+    const createdWorkspace = {
+      ...baseWorkspace,
+      selected: 'backend',
+      variants: [
+        ...baseWorkspace.variants,
+        {
+          name: 'backend',
+          has_pdf: false,
+          state: { hash: 'hash-backend', mtime_ns: 3 },
+        },
+      ],
+    }
+    const fetchMock = mockFetch((input, init) => {
+      if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
+      if (String(input) === '/api/variants' && init?.method === 'POST') {
+        return jsonResponse(createdWorkspace)
+      }
+      return jsonResponse({ hash: 'hash-base', mtime_ns: 1 })
+    })
+
+    renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: /new variant/i }))
+    await userEvent.type(await screen.findByLabelText('Variant name'), 'Backend')
+    await userEvent.click(screen.getByRole('button', { name: /create variant/i }))
+
+    await waitFor(() => expect(screen.getByText('Variant created.')).toBeInTheDocument())
+    const createBody = JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))
+    expect(createBody).toEqual({ name: 'Backend', source: 'base' })
+  })
+
+  it('restores a snapshot from the snapshot action menu', async () => {
+    const fetchMock = mockFetch((input, init) => {
+      if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
+      if (String(input) === '/api/variants/base/restore/abc123' && init?.method === 'POST') {
+        return jsonResponse(baseWorkspace)
+      }
+      return jsonResponse({ hash: 'hash-base', mtime_ns: 1 })
+    })
+
+    renderApp()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /snapshot actions for initial resume/i }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: /restore as draft/i }))
+
+    await waitFor(() => expect(screen.getByText('Restored as draft.')).toBeInTheDocument())
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/variants/base/restore/abc123',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 })
