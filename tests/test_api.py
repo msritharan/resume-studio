@@ -2,11 +2,13 @@ import os
 
 from fastapi.testclient import TestClient
 
+from app.config import clear_workspace_override
 from app.main import app
 from app.services import WorkspaceService, file_state
 
 
 def client_for(tmp_path, monkeypatch):
+    clear_workspace_override()
     monkeypatch.setenv("RESUME_WORKSPACE", str(tmp_path))
     return TestClient(app)
 
@@ -31,6 +33,23 @@ def test_init_returns_base_workspace(tmp_path, monkeypatch):
     assert payload["initialized"] is True
     assert payload["selected"] == "base"
     assert payload["variants"][0]["name"] == "base"
+
+
+def test_init_can_choose_workspace_directory(tmp_path, monkeypatch):
+    client = client_for(tmp_path, monkeypatch)
+    chosen = tmp_path / "chosen-workspace"
+
+    response = client.post("/api/init", json={"workspace_path": str(chosen)})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["workspace_path"] == str(chosen)
+    assert payload["initialized"] is True
+    assert (chosen / "variants" / "base" / "resume.yaml").exists()
+
+    workspace_response = client.get("/api/workspace")
+
+    assert workspace_response.json()["workspace_path"] == str(chosen)
 
 
 def test_create_variant_returns_new_selection(tmp_path, monkeypatch):

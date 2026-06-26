@@ -9,6 +9,7 @@ import {
   Clock3,
   Download,
   FileText,
+  FolderOpen,
   GitBranch,
   GitCommitHorizontal,
   Loader2,
@@ -143,6 +144,7 @@ function App() {
   const [renderDialogOpen, setRenderDialogOpen] = useState(false)
   const [variantName, setVariantName] = useState('')
   const [snapshotMessage, setSnapshotMessage] = useState('')
+  const [workspacePathInput, setWorkspacePathInput] = useState('')
   const [action, setAction] = useState<Action>(null)
   const [loading, setLoading] = useState(true)
   const isDesktop = useIsDesktop()
@@ -194,6 +196,9 @@ function App() {
     setExpectedHash(next.state?.hash ?? null)
     setDirty(false)
     setDiskChanged(false)
+    if (!next.initialized) {
+      setWorkspacePathInput(next.workspace_path)
+    }
   }
 
   function messageFromError(caught: unknown) {
@@ -247,8 +252,14 @@ function App() {
     }
   }
 
-  async function handleInit() {
-    await runMutation('init', initWorkspace, applyWorkspace, 'Workspace initialized.')
+  async function handleInit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    await runMutation(
+      'init',
+      () => initWorkspace(workspacePathInput),
+      applyWorkspace,
+      'Workspace initialized.',
+    )
   }
 
   async function handleCreateVariant(event: FormEvent<HTMLFormElement>) {
@@ -356,18 +367,41 @@ function App() {
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-              <Button
-                className="w-fit"
-                disabled={action === 'init'}
-                onClick={handleInit}
-              >
-                {action === 'init' ? (
-                  <Loader2 data-icon="inline-start" className="animate-spin" />
-                ) : (
-                  <Sparkles data-icon="inline-start" />
-                )}
-                Initialize workspace
-              </Button>
+              <form className="flex flex-col gap-4" onSubmit={handleInit}>
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="workspace-directory">
+                      Workspace directory
+                    </FieldLabel>
+                    <div className="relative">
+                      <FolderOpen
+                        aria-hidden="true"
+                        className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                      />
+                      <Input
+                        id="workspace-directory"
+                        autoComplete="off"
+                        className="h-10 pl-8 font-mono text-sm"
+                        disabled={action === 'init'}
+                        onChange={(event) => setWorkspacePathInput(event.target.value)}
+                        value={workspacePathInput}
+                      />
+                    </div>
+                    <FieldDescription>
+                      Resume Studio will create the base variant and Git history in this
+                      folder.
+                    </FieldDescription>
+                  </Field>
+                </FieldGroup>
+                <Button className="w-fit" disabled={action === 'init'} type="submit">
+                  {action === 'init' ? (
+                    <Loader2 data-icon="inline-start" className="animate-spin" />
+                  ) : (
+                    <Sparkles data-icon="inline-start" />
+                  )}
+                  Initialize workspace
+                </Button>
+              </form>
             </CardContent>
           </Card>
         </section>

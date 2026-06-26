@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config import get_settings
+from .config import get_settings, set_workspace_override
 from .services import (
     FileState,
     GitService,
@@ -77,6 +77,10 @@ class SaveResumeRequest(BaseModel):
 
 class SnapshotRequest(BaseModel):
     message: str = ""
+
+
+class InitWorkspaceRequest(BaseModel):
+    workspace_path: Optional[str] = None
 
 
 class RenderResponse(BaseModel):
@@ -173,7 +177,12 @@ async def api_workspace(variant: Optional[str] = Query(default=None)):
 
 
 @app.post("/api/init", response_model=WorkspaceResponse)
-async def api_init_workspace():
+async def api_init_workspace(payload: InitWorkspaceRequest = InitWorkspaceRequest()):
+    if payload.workspace_path is not None:
+        workspace_path = payload.workspace_path.strip()
+        if not workspace_path:
+            raise HTTPException(status_code=400, detail="Enter a workspace directory.")
+        set_workspace_override(Path(workspace_path))
     workspace, _, _ = services()
     workspace.init_workspace()
     return workspace_response("base")

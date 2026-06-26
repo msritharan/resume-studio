@@ -115,6 +115,10 @@ describe('Resume Studio app', () => {
     renderApp()
 
     expect(await screen.findByText('Begin with a base resume')).toBeInTheDocument()
+    const workspaceInput = screen.getByLabelText(/workspace directory/i)
+    expect(workspaceInput).toHaveValue('/tmp/resume-workspace')
+    await userEvent.clear(workspaceInput)
+    await userEvent.type(workspaceInput, '/tmp/custom-resume-workspace')
     await userEvent.click(screen.getByRole('button', { name: /initialize workspace/i }))
 
     await waitFor(() => expect(screen.getByText('Workspace initialized.')).toBeInTheDocument())
@@ -122,6 +126,9 @@ describe('Resume Studio app', () => {
       '/api/init',
       expect.objectContaining({ method: 'POST' }),
     )
+    expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toEqual({
+      workspace_path: '/tmp/custom-resume-workspace',
+    })
   })
 
   it('selects a variant through the authoritative workspace endpoint', async () => {

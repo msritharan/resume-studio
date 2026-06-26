@@ -44,8 +44,11 @@ export function getWorkspace(variant?: string) {
   return request<Workspace>(`/api/workspace${query}`)
 }
 
-export function initWorkspace() {
-  return request<Workspace>('/api/init', { method: 'POST', body: '{}' })
+export function initWorkspace(workspacePath?: string) {
+  return request<Workspace>('/api/init', {
+    method: 'POST',
+    body: JSON.stringify({ workspace_path: workspacePath }),
+  })
 }
 
 export function createVariant(name: string, source: string) {

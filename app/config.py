@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 DEFAULT_WORKSPACE = Path.home() / "projects" / "resume-workspace"
+_workspace_override: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,17 @@ class Settings:
 
 
 def get_settings() -> Settings:
-    workspace = Path(os.environ.get("RESUME_WORKSPACE", DEFAULT_WORKSPACE)).expanduser()
+    workspace = _workspace_override or Path(
+        os.environ.get("RESUME_WORKSPACE", DEFAULT_WORKSPACE)
+    ).expanduser()
     return Settings(workspace=workspace)
 
+
+def set_workspace_override(workspace: Path) -> None:
+    global _workspace_override
+    _workspace_override = workspace.expanduser()
+
+
+def clear_workspace_override() -> None:
+    global _workspace_override
+    _workspace_override = None
