@@ -5,6 +5,7 @@ frontend/dist/
 __pycache__/
 .pytest_cache/
 .env
+.runtime/
 *.pyc
 *.log
 .DS_Store

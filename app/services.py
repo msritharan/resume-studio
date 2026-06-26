@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -330,6 +332,13 @@ class RenderService:
     def __init__(self, workspace: Path):
         self.workspace = workspace.expanduser()
 
+    def _rendercv_command(self) -> Optional[str]:
+        for script_name in ("rendercv", "rendercv.exe"):
+            local_script = Path(sys.executable).with_name(script_name)
+            if local_script.is_file() and os.access(local_script, os.X_OK):
+                return str(local_script)
+        return shutil.which("rendercv")
+
     def render(self, variant_name: str) -> RenderResult:
         slug = assert_safe_variant_name(variant_name)
         variant_dir = self.workspace / "variants" / slug
@@ -340,10 +349,21 @@ class RenderService:
             if artifact.is_file():
                 artifact.unlink()
 
+        rendercv_command = self._rendercv_command()
+        if rendercv_command is None:
+            return RenderResult(
+                ok=False,
+                output=(
+                    "RenderCV is not installed in the app virtualenv or on PATH. "
+                    'Run pnpm setup, or install it with pip install "rendercv[full]".'
+                ),
+                pdf_path=None,
+            )
+
         try:
             result = subprocess.run(
                 [
-                    "rendercv",
+                    rendercv_command,
                     "render",
                     str(resume_path),
                     "--output-folder",
@@ -357,8 +377,8 @@ class RenderService:
             return RenderResult(
                 ok=False,
                 output=(
-                    "RenderCV is not installed or is not on PATH. Install it with "
-                    'pip install "rendercv[full]".'
+                    "RenderCV is not installed in the app virtualenv or on PATH. "
+                    'Run pnpm setup, or install it with pip install "rendercv[full]".'
                 ),
                 pdf_path=None,
             )

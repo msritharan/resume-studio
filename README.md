@@ -37,8 +37,9 @@ resume-workspace/
 
 The backend can run on Python 3.9+, and the frontend uses Vite, React,
 TypeScript, Tailwind, shadcn/ui, and CodeMirror. PDF rendering needs the
-`rendercv` command on `PATH`. Current RenderCV releases require Python 3.12+, so
-use a Python 3.12+ environment if you want `Render preview` to produce PDFs.
+`rendercv` command installed in the app virtualenv or available on `PATH`.
+Current RenderCV releases require Python 3.12+, so use a Python 3.12+
+environment if you want `Render preview` to produce PDFs.
 
 If `python3.12` is not installed yet, you can still run the app backend with
 plain `python3`, but PDF preview will stay unavailable until RenderCV is
@@ -46,17 +47,16 @@ installed in a Python 3.12+ environment.
 
 ```bash
 cd ~/projects/resume-studio
-python3.12 -m venv .venv  # or: python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -e ".[dev]"
-pip install "rendercv[full]"  # requires Python 3.12+
 corepack enable pnpm         # or: npm install -g pnpm
-pnpm --dir frontend install
-cp .env.example .env
-export RESUME_WORKSPACE=~/projects/resume-workspace
-pnpm dev
+pnpm setup
 ```
+
+`pnpm setup` creates `.venv`, installs the backend dependencies, installs
+`rendercv[full]`, installs the frontend dependencies, and creates `.env` if it
+does not exist yet. By default it uses `python3.12`; if you only want the app
+without RenderCV preview support, you can run `PYTHON_BIN=python3 pnpm setup`.
+The dev scripts automatically prefer the RenderCV executable from `.venv`, so a
+global RenderCV install is not required.
 
 Open the Vite app during development:
 
@@ -65,6 +65,20 @@ http://127.0.0.1:5173
 ```
 
 Vite proxies `/api` and `/variants` requests to FastAPI on port `8765`.
+
+For a managed background workflow, put `RESUME_WORKSPACE` in `.env` and use:
+
+```bash
+pnpm setup
+pnpm dev:up
+pnpm dev:down
+```
+
+These scripts start both servers, store PID files in `.runtime/`, and write logs
+to `.runtime/backend.log` and `.runtime/frontend.log`.
+
+During development, open the app UI at `http://127.0.0.1:5173`. The FastAPI
+backend API listens separately on `http://127.0.0.1:8765`.
 
 To serve the built React app directly from FastAPI:
 

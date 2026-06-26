@@ -116,6 +116,7 @@ def test_render_service_reports_missing_rendercv(tmp_path, monkeypatch):
     workspace = WorkspaceService(tmp_path)
     workspace.init_workspace()
     monkeypatch.setenv("PATH", "")
+    monkeypatch.setattr("app.services.sys.executable", str(tmp_path / "bin" / "python"))
 
     result = RenderService(tmp_path).render("base")
 
@@ -131,15 +132,41 @@ def test_render_service_uses_variant_output_dir(tmp_path, monkeypatch):
     script = bin_dir / "rendercv"
     script.write_text(
         "#!/bin/sh\n"
-        "mkdir -p \"$4\"\n"
-        "printf '%s' '%PDF-1.4 fake' > \"$4/fake.pdf\"\n",
+        "/bin/mkdir -p \"$4\"\n"
+        "/usr/bin/printf '%s' '%PDF-1.4 fake' > \"$4/fake.pdf\"\n",
         encoding="utf-8",
     )
     script.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setattr("app.services.sys.executable", str(tmp_path / "python"))
 
     result = RenderService(tmp_path).render("base")
 
     assert result.ok
     assert result.pdf_path == tmp_path / "variants" / "base" / "rendercv_output" / "fake.pdf"
 
+
+def test_render_service_uses_rendercv_from_active_virtualenv(tmp_path, monkeypatch):
+    workspace = WorkspaceService(tmp_path)
+    workspace.init_workspace()
+    venv_bin = tmp_path / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    python = venv_bin / "python"
+    python.write_text("", encoding="utf-8")
+    script = venv_bin / "rendercv"
+    script.write_text(
+        "#!/bin/sh\n"
+        "/bin/mkdir -p \"$4\"\n"
+        "/usr/bin/printf '%s' '%PDF-1.4 fake' > \"$4/venv.pdf\"\n"
+        "/usr/bin/printf '%s' 'rendered from venv'\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setattr("app.services.sys.executable", str(python))
+
+    result = RenderService(tmp_path).render("base")
+
+    assert result.ok
+    assert result.output == "rendered from venv"
+    assert result.pdf_path == tmp_path / "variants" / "base" / "rendercv_output" / "venv.pdf"

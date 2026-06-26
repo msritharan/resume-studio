@@ -98,14 +98,15 @@ def test_render_success_returns_output_and_artifact_urls(tmp_path, monkeypatch):
     script = bin_dir / "rendercv"
     script.write_text(
         "#!/bin/sh\n"
-        "mkdir -p \"$4\"\n"
-        "printf '%s' '%PDF-1.4 fake' > \"$4/fake.pdf\"\n"
-        "printf '%s' 'fake png' > \"$4/fake.png\"\n"
-        "printf '%s' 'rendered ok'\n",
+        "/bin/mkdir -p \"$4\"\n"
+        "/usr/bin/printf '%s' '%PDF-1.4 fake' > \"$4/fake.pdf\"\n"
+        "/usr/bin/printf '%s' 'fake png' > \"$4/fake.png\"\n"
+        "/usr/bin/printf '%s' 'rendered ok'\n",
         encoding="utf-8",
     )
     script.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setattr("app.services.sys.executable", str(tmp_path / "python"))
     client = client_for(tmp_path, monkeypatch)
 
     response = client.post("/api/variants/base/render")
@@ -120,6 +121,7 @@ def test_render_success_returns_output_and_artifact_urls(tmp_path, monkeypatch):
 def test_render_failure_returns_render_output(tmp_path, monkeypatch):
     WorkspaceService(tmp_path).init_workspace()
     monkeypatch.setenv("PATH", "")
+    monkeypatch.setattr("app.services.sys.executable", str(tmp_path / "python"))
     client = client_for(tmp_path, monkeypatch)
 
     response = client.post("/api/variants/base/render")
