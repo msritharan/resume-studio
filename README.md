@@ -106,6 +106,13 @@ http://127.0.0.1:8765
 If Codex edits a file externally, the UI detects that the file changed on disk and
 asks you to reload or keep your browser edits.
 
+## Repo Skills
+
+This repo includes a Codex skill at `skills/tailor-resume/` for tailoring
+RenderCV resume variants to job descriptions. Point a coding agent at that skill
+when you want it to create or update a Resume Studio variant, validate the YAML
+with RenderCV, and snapshot the variant only after validation succeeds.
+
 ## Tests
 
 ```bash

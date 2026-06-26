@@ -1,0 +1,3 @@
+display_name: Tailor Resume
+short_description: Tailor RenderCV resume variants to job descriptions.
+default_prompt: Use the repo-local tailor-resume skill to create or update a Resume Studio variant for this job description, validate it with RenderCV, and snapshot it only after validation succeeds.
