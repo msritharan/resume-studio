@@ -355,7 +355,7 @@ class RenderService:
                 ok=False,
                 output=(
                     "RenderCV is not installed in the app virtualenv or on PATH. "
-                    'Run pnpm setup, or install it with pip install "rendercv[full]".'
+                    'Run ./scripts/setup.sh, or install it with pip install "rendercv[full]".'
                 ),
                 pdf_path=None,
             )
@@ -378,7 +378,7 @@ class RenderService:
                 ok=False,
                 output=(
                     "RenderCV is not installed in the app virtualenv or on PATH. "
-                    'Run pnpm setup, or install it with pip install "rendercv[full]".'
+                    'Run ./scripts/setup.sh, or install it with pip install "rendercv[full]".'
                 ),
                 pdf_path=None,
             )

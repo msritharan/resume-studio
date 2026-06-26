@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "setup": "./scripts/setup.sh",
+    "bootstrap": "./scripts/setup.sh",
     "dev": "./scripts/dev.sh",
     "dev:up": "./scripts/dev-up.sh",
     "dev:down": "./scripts/dev-down.sh",

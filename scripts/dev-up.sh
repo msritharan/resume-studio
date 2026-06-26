@@ -92,13 +92,13 @@ ensure_port_free 5173 "Frontend"
 
 if [ ! -x .venv/bin/python ]; then
   echo "Missing virtualenv interpreter at .venv/bin/python"
-  echo "Run pnpm setup first."
-  exit 1
+  echo "Bootstrapping project dependencies with ./scripts/setup.sh"
+  ./scripts/setup.sh
 fi
 
 if ! .venv/bin/python -c "import fastapi, uvicorn" >/dev/null 2>&1; then
   echo "Python dependencies are missing from .venv."
-  echo "Run pnpm setup first."
+  echo "Run ./scripts/setup.sh first."
   exit 1
 fi
 

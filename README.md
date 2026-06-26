@@ -48,13 +48,14 @@ installed in a Python 3.12+ environment.
 ```bash
 cd ~/projects/resume-studio
 corepack enable pnpm         # or: npm install -g pnpm
-pnpm setup
+pnpm run bootstrap
 ```
 
-`pnpm setup` creates `.venv`, installs the backend dependencies, installs
-`rendercv[full]`, installs the frontend dependencies, and creates `.env` if it
-does not exist yet. By default it uses `python3.12`; if you only want the app
-without RenderCV preview support, you can run `PYTHON_BIN=python3 pnpm setup`.
+`pnpm run bootstrap` creates `.venv`, installs the backend dependencies,
+installs `rendercv[full]`, installs the frontend dependencies, and creates
+`.env` if it does not exist yet. By default it uses `python3.12`; if you only
+want the app without RenderCV preview support, you can run
+`PYTHON_BIN=python3 pnpm run bootstrap`.
 The dev scripts automatically prefer the RenderCV executable from `.venv`, so a
 global RenderCV install is not required.
 
@@ -69,7 +70,7 @@ Vite proxies `/api` and `/variants` requests to FastAPI on port `8765`.
 For a managed background workflow, put `RESUME_WORKSPACE` in `.env` and use:
 
 ```bash
-pnpm setup
+pnpm run bootstrap
 pnpm dev:up
 pnpm dev:down
 ```

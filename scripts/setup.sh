@@ -19,13 +19,17 @@ if ! command -v pnpm >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ ! -d .venv ]; then
+if [ ! -x .venv/bin/python ]; then
+  if [ -d .venv ]; then
+    echo "Existing .venv is missing a Python interpreter; recreating it."
+    rm -rf .venv
+  fi
   echo "Creating virtualenv with $PYTHON_BIN"
   "$PYTHON_BIN" -m venv .venv
 fi
 
 echo "Installing Python dependencies"
-.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install --upgrade pip setuptools wheel
 .venv/bin/python -m pip install --no-build-isolation -e ".[dev]"
 
 echo "Installing RenderCV"
