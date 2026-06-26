@@ -1,0 +1,12 @@
+{
+  "name": "resume-studio-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --dir frontend exec concurrently -n api,ui -c blue,magenta \".venv/bin/python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8765\" \"pnpm --dir frontend dev --host 127.0.0.1 --port 5173\"",
+    "build": "pnpm --dir frontend build",
+    "test": ".venv/bin/pytest && pnpm --dir frontend test --run",
+    "test:backend": ".venv/bin/pytest",
+    "test:frontend": "pnpm --dir frontend test --run"
+  }
+}

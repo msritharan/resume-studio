@@ -1,0 +1,2 @@
+"""Resume Studio app package."""
+
