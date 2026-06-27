@@ -26,7 +26,7 @@ export type Workspace = {
   updated_at: string
   history: HistoryEntry[]
   pdf_url: string | null
-  preview_url: string | null
+  preview_urls: string[]
 }
 
 export type RenderResult = {

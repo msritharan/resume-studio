@@ -134,7 +134,8 @@ def test_render_success_returns_output_and_artifact_urls(tmp_path, monkeypatch):
     payload = response.json()
     assert payload["output"] == "rendered ok"
     assert payload["workspace"]["pdf_url"] == "/variants/base/pdf"
-    assert payload["workspace"]["preview_url"].startswith("/variants/base/preview.png?v=")
+    assert len(payload["workspace"]["preview_urls"]) == 1
+    assert payload["workspace"]["preview_urls"][0].startswith("/variants/base/preview/1.png?v=")
 
 
 def test_render_failure_returns_render_output(tmp_path, monkeypatch):
@@ -201,14 +202,14 @@ def test_preview_route_reports_missing_and_found(tmp_path, monkeypatch):
     workspace.init_workspace()
     client = client_for(tmp_path, monkeypatch)
 
-    missing = client.get("/variants/base/preview.png")
+    missing = client.get("/variants/base/preview/1.png")
 
     assert missing.status_code == 404
     output = tmp_path / "variants" / "base" / "rendercv_output"
     output.mkdir()
     (output / "fake.png").write_bytes(b"fake png")
 
-    found = client.get("/variants/base/preview.png")
+    found = client.get("/variants/base/preview/1.png")
 
     assert found.status_code == 200
     assert found.headers["content-type"] == "image/png"

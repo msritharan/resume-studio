@@ -442,8 +442,9 @@ function App() {
             preview={
               <PreviewPanel
                 error={renderError}
+                isDesktop={isDesktop}
                 pdfUrl={workspace?.pdf_url ?? null}
-                previewUrl={workspace?.preview_url ?? null}
+                previewUrls={workspace?.preview_urls ?? []}
                 renderStatus={renderStatus}
               />
             }
@@ -489,8 +490,9 @@ function App() {
             />
             <PreviewPanel
               error={renderError}
+              isDesktop={isDesktop}
               pdfUrl={workspace?.pdf_url ?? null}
-              previewUrl={workspace?.preview_url ?? null}
+              previewUrls={workspace?.preview_urls ?? []}
               renderStatus={renderStatus}
             />
           </div>
@@ -1143,15 +1145,22 @@ function EditorPanel({
 
 function PreviewPanel({
   error,
+  isDesktop,
   pdfUrl,
-  previewUrl,
+  previewUrls,
   renderStatus,
 }: {
   error: string | null
+  isDesktop: boolean
   pdfUrl: string | null
-  previewUrl: string | null
+  previewUrls: string[]
   renderStatus: RenderStatus
 }) {
+  const hasPreviewImages = previewUrls.length > 0
+  const embeddedPdfUrl = pdfUrl
+    ? `${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`
+    : null
+
   return (
     <Card className="h-full rounded-lg shadow-[0_1px_0_rgba(24,32,29,0.03)]">
       <CardHeader>
@@ -1180,13 +1189,40 @@ function PreviewPanel({
             <AlertDescription>{error ?? 'RenderCV could not render this variant.'}</AlertDescription>
           </Alert>
         )}
-        {previewUrl ? (
+        {pdfUrl || hasPreviewImages ? (
           <div className="min-h-[520px] flex-1 overflow-auto rounded-lg border bg-white p-3">
-            <img
-              alt="Rendered resume preview"
-              className="mx-auto h-auto max-w-full rounded-sm shadow-sm"
-              src={previewUrl}
-            />
+            {isDesktop && pdfUrl ? (
+              <object
+                aria-label="Rendered resume PDF"
+                className="h-full min-h-[920px] w-full rounded-sm"
+                data={embeddedPdfUrl ?? pdfUrl}
+                type="application/pdf"
+              >
+                {hasPreviewImages ? (
+                  <div className="space-y-4">
+                    {previewUrls.map((previewUrl, index) => (
+                      <img
+                        key={previewUrl}
+                        alt={`Rendered resume preview page ${index + 1}`}
+                        className="mx-auto h-auto max-w-full rounded-sm shadow-sm"
+                        src={previewUrl}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </object>
+            ) : hasPreviewImages ? (
+              <div className="space-y-4">
+                {previewUrls.map((previewUrl, index) => (
+                  <img
+                    key={previewUrl}
+                    alt={`Rendered resume preview page ${index + 1}`}
+                    className="mx-auto h-auto max-w-full rounded-sm shadow-sm"
+                    src={previewUrl}
+                  />
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="grid min-h-[420px] flex-1 place-items-center rounded-lg border border-dashed bg-background p-6 text-center">
@@ -1194,7 +1230,7 @@ function PreviewPanel({
               {pdfUrl ? <FileText /> : <RevisionRail />}
               <p className="type-meta">
                 {pdfUrl
-                  ? 'RenderCV did not produce an image preview for this PDF.'
+                  ? 'RenderCV did not produce preview images for this PDF.'
                   : 'Render this variant to see the PDF preview.'}
               </p>
               {pdfUrl && (

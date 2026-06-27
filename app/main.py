@@ -61,7 +61,7 @@ class WorkspaceResponse(BaseModel):
     updated_at: str
     history: list[HistoryEntryResponse]
     pdf_url: Optional[str]
-    preview_url: Optional[str]
+    preview_urls: list[str]
 
 
 class CreateVariantRequest(BaseModel):
@@ -138,7 +138,7 @@ def workspace_response(selected: Optional[str] = None) -> WorkspaceResponse:
     state = None
     history: list[HistoryEntry] = []
     pdf_url = None
-    preview_url = None
+    preview_urls: list[str] = []
     updated_at = "missing"
 
     if initialized and variants:
@@ -149,9 +149,10 @@ def workspace_response(selected: Optional[str] = None) -> WorkspaceResponse:
         history = git.history(selected_name)
         if workspace.latest_pdf(selected_name):
             pdf_url = f"/variants/{selected_name}/pdf"
-        preview_state = workspace.latest_preview_image_state(selected_name)
-        if preview_state:
-            preview_url = f"/variants/{selected_name}/preview.png?v={preview_state.mtime_ns}"
+        for index, preview_state in enumerate(workspace.preview_image_states(selected_name), start=1):
+            preview_urls.append(
+                f"/variants/{selected_name}/preview/{index}.png?v={preview_state.mtime_ns}"
+            )
 
     return WorkspaceResponse(
         workspace_path=str(workspace.workspace),
@@ -163,7 +164,7 @@ def workspace_response(selected: Optional[str] = None) -> WorkspaceResponse:
         updated_at=updated_at,
         history=[history_entry_response(entry) for entry in history],
         pdf_url=pdf_url,
-        preview_url=preview_url,
+        preview_urls=preview_urls,
     )
 
 
@@ -285,13 +286,16 @@ async def variant_pdf(variant: str):
     )
 
 
-@app.get("/variants/{variant}/preview.png")
-async def variant_preview(variant: str):
+@app.get("/variants/{variant}/preview/{page}.png")
+async def variant_preview(variant: str, page: int):
     workspace, _, _ = services()
     try:
-        preview = workspace.latest_preview_image(variant)
+        previews = workspace.preview_images(variant)
     except ResumeStudioError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    if page < 1 or page > len(previews):
+        raise HTTPException(status_code=404, detail="Preview page does not exist.")
+    preview = previews[page - 1]
     if not preview:
         raise HTTPException(status_code=404, detail="No rendered preview image exists.")
     return FileResponse(

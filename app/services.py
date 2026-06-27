@@ -218,15 +218,16 @@ class WorkspaceService:
         pdfs = sorted(output_dir.glob("*.pdf"), key=lambda p: p.stat().st_mtime_ns)
         return pdfs[-1] if pdfs else None
 
-    def latest_preview_image(self, name: str) -> Optional[Path]:
+    def preview_images(self, name: str) -> List[Path]:
         slug = assert_safe_variant_name(name)
         output_dir = self.variants_dir / slug / "rendercv_output"
         images = sorted(output_dir.glob("*.png"), key=lambda p: p.stat().st_mtime_ns)
-        return images[-1] if images else None
+        return images
 
-    def latest_preview_image_state(self, name: str) -> Optional[FileState]:
-        preview = self.latest_preview_image(name)
-        return file_state(preview) if preview else None
+    def preview_image_states(self, name: str) -> List[FileState]:
+        return [
+            state for preview in self.preview_images(name) if (state := file_state(preview)) is not None
+        ]
 
     def relative_variant_path(self, name: str) -> str:
         slug = assert_safe_variant_name(name)

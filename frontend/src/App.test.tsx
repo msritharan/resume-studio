@@ -50,7 +50,7 @@ const baseWorkspace: Workspace = {
     },
   ],
   pdf_url: null,
-  preview_url: null,
+  preview_urls: [],
 }
 
 function renderApp() {
@@ -138,7 +138,7 @@ describe('Resume Studio app', () => {
       content: 'cv:\n  name: OpenAI Resume\n',
       state: { hash: 'hash-openai', mtime_ns: 2 },
       pdf_url: '/variants/openai/pdf',
-      preview_url: '/variants/openai/preview.png?v=2',
+      preview_urls: ['/variants/openai/preview/1.png?v=2'],
     }
     const fetchMock = mockFetch((input) => {
       if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
@@ -159,10 +159,7 @@ describe('Resume Studio app', () => {
       '/api/workspace?variant=openai',
       expect.any(Object),
     )
-    expect(screen.getByAltText('Rendered resume preview')).toHaveAttribute(
-      'src',
-      '/variants/openai/preview.png?v=2',
-    )
+    expect(screen.getByLabelText('Rendered resume PDF')).toBeInTheDocument()
   })
 
   it('keeps the clean state quiet instead of showing a saved badge', async () => {
@@ -236,7 +233,7 @@ describe('Resume Studio app', () => {
     const renderedWorkspace = {
       ...baseWorkspace,
       pdf_url: '/variants/base/pdf',
-      preview_url: '/variants/base/preview.png?v=3',
+      preview_urls: ['/variants/base/preview/1.png?v=3'],
     }
     mockFetch((input, init) => {
       if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
@@ -256,14 +253,52 @@ describe('Resume Studio app', () => {
       'href',
       '/variants/base/pdf',
     )
-    expect(screen.getByAltText('Rendered resume preview')).toHaveAttribute(
+    expect(screen.getByLabelText('Rendered resume PDF')).toHaveAttribute(
+      'data',
+      '/variants/base/pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitH',
+    )
+    expect(screen.getByAltText('Rendered resume preview page 1')).toHaveAttribute(
       'src',
-      '/variants/base/preview.png?v=3',
+      '/variants/base/preview/1.png?v=3',
     )
 
     await userEvent.click(screen.getByRole('button', { name: /close/i }))
     expect(screen.queryByText('rendered ok')).not.toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: /preview rendered\./i })).not.toBeInTheDocument()
+  })
+
+  it('renders all preview pages when multiple images exist', async () => {
+    const openaiWorkspace = {
+      ...baseWorkspace,
+      selected: 'openai',
+      content: 'cv:\n  name: OpenAI Resume\n',
+      state: { hash: 'hash-openai', mtime_ns: 2 },
+      pdf_url: null,
+      preview_urls: [
+        '/variants/openai/preview/1.png?v=2',
+        '/variants/openai/preview/2.png?v=3',
+      ],
+    }
+    mockFetch((input) => {
+      if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
+      if (String(input) === '/api/workspace?variant=openai') {
+        return jsonResponse(openaiWorkspace)
+      }
+      return jsonResponse({ hash: 'hash-base', mtime_ns: 1 })
+    })
+
+    renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: /openai/i }))
+
+    expect(await screen.findByAltText('Rendered resume preview page 1')).toHaveAttribute(
+      'src',
+      '/variants/openai/preview/1.png?v=2',
+    )
+    expect(screen.getByAltText('Rendered resume preview page 2')).toHaveAttribute(
+      'src',
+      '/variants/openai/preview/2.png?v=3',
+    )
   })
 
   it('shows render failure status with diagnostic logs in the popup', async () => {
@@ -299,7 +334,7 @@ describe('Resume Studio app', () => {
     const renderedWorkspace = {
       ...savedWorkspace,
       pdf_url: '/variants/base/pdf',
-      preview_url: '/variants/base/preview.png?v=4',
+      preview_urls: ['/variants/base/preview/1.png?v=4'],
     }
     const fetchMock = mockFetch((input, init) => {
       if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
@@ -341,7 +376,7 @@ describe('Resume Studio app', () => {
       content: 'cv:\n  name: OpenAI Resume\n',
       state: { hash: 'hash-openai', mtime_ns: 2 },
       pdf_url: '/variants/openai/pdf',
-      preview_url: '/variants/openai/preview.png?v=2',
+      preview_urls: ['/variants/openai/preview/1.png?v=2'],
     }
     mockFetch((input) => {
       if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
@@ -357,9 +392,9 @@ describe('Resume Studio app', () => {
 
     const pdfLinks = await screen.findAllByRole('link', { name: /export pdf/i })
     expect(pdfLinks[0]).toHaveAttribute('href', '/variants/openai/pdf')
-    expect(await screen.findByAltText('Rendered resume preview')).toHaveAttribute(
+    expect(await screen.findByAltText('Rendered resume preview page 1')).toHaveAttribute(
       'src',
-      '/variants/openai/preview.png?v=2',
+      '/variants/openai/preview/1.png?v=2',
     )
     expect(screen.queryByLabelText('Rendered resume PDF')).not.toBeInTheDocument()
   })
