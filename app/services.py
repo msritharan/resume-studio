@@ -119,7 +119,7 @@ class WorkspaceService:
             self._run(["git", "init"])
 
     def is_initialized(self) -> bool:
-        return (self.variants_dir / "base" / "resume.yaml").exists()
+        return any(self.variants_dir.glob("*/resume.yaml"))
 
     def list_variants(self) -> List[Variant]:
         if not self.variants_dir.exists():
@@ -180,11 +180,11 @@ class WorkspaceService:
 
     def delete_variant(self, name: str) -> None:
         slug = assert_safe_variant_name(name)
-        if slug == "base":
-            raise ResumeStudioError("The base variant cannot be deleted.")
         path = self.variants_dir / slug
         if not path.exists():
             raise ResumeStudioError(f"Variant '{slug}' does not exist.")
+        if len(self.list_variants()) <= 1:
+            raise ResumeStudioError("At least one variant must remain.")
         shutil.rmtree(path)
 
     def read_resume(self, name: str) -> str:

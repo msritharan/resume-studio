@@ -150,7 +150,7 @@ describe('Resume Studio app', () => {
 
     renderApp()
 
-    await userEvent.click(await screen.findByRole('button', { name: /openai/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /^openai$/i }))
 
     await waitFor(() => {
       expect(screen.getAllByText('variants/openai/resume.yaml').length).toBeGreaterThan(0)
@@ -289,7 +289,7 @@ describe('Resume Studio app', () => {
 
     renderApp()
 
-    await userEvent.click(await screen.findByRole('button', { name: /openai/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /^openai$/i }))
 
     expect(await screen.findByAltText('Rendered resume preview page 1')).toHaveAttribute(
       'src',
@@ -388,7 +388,7 @@ describe('Resume Studio app', () => {
 
     renderApp()
 
-    await userEvent.click(await screen.findByRole('button', { name: /openai/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /^openai$/i }))
 
     const pdfLinks = await screen.findAllByRole('link', { name: /export pdf/i })
     expect(pdfLinks[0]).toHaveAttribute('href', '/variants/openai/pdf')
@@ -477,6 +477,146 @@ describe('Resume Studio app', () => {
     await waitFor(() => expect(screen.getByText('Variant created.')).toBeInTheDocument())
     const createBody = JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))
     expect(createBody).toEqual({ name: 'Backend', source: 'base' })
+  })
+
+  it('filters variants with the search input', async () => {
+    mockFetch((input) => {
+      if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
+      return jsonResponse({ hash: 'hash-base', mtime_ns: 1 })
+    })
+
+    renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Search variants' }))
+    const search = await screen.findByLabelText('Search variants')
+    await userEvent.type(search, 'open')
+
+    expect(screen.getByRole('button', { name: /^openai$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^base$/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps search collapsed by default', async () => {
+    mockFetch((input) => {
+      if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
+      return jsonResponse({ hash: 'hash-base', mtime_ns: 1 })
+    })
+
+    renderApp()
+
+    await screen.findByText('Resume Studio')
+    expect(screen.getByRole('button', { name: 'Search variants' })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Search variants' })).not.toBeInTheDocument()
+  })
+
+  it('shows variant actions when more than one variant exists, including base', async () => {
+    mockFetch((input) => {
+      if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
+      return jsonResponse({ hash: 'hash-base', mtime_ns: 1 })
+    })
+
+    renderApp()
+
+    await screen.findByText('Resume Studio')
+    expect(screen.getByRole('button', { name: /variant actions for base/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /variant actions for openai/i })).toBeInTheDocument()
+  })
+
+  it('uses cleaned-up create variant copy', async () => {
+    mockFetch((input) => {
+      if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
+      return jsonResponse({ hash: 'hash-base', mtime_ns: 1 })
+    })
+
+    renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: /new variant/i }))
+    expect(await screen.findByText('Create a new variant from base.')).toBeInTheDocument()
+    expect(screen.getByText('Starts from the current variant.')).toBeInTheDocument()
+  })
+
+  it('opens and cancels delete confirmation without calling the API', async () => {
+    const fetchMock = mockFetch((input) => {
+      if (String(input) === '/api/workspace') return jsonResponse(baseWorkspace)
+      return jsonResponse({ hash: 'hash-base', mtime_ns: 1 })
+    })
+
+    renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: /variant actions for openai/i }))
+    await userEvent.click(screen.getByRole('button', { name: /delete variant/i }))
+
+    expect(await screen.findByRole('dialog', { name: /delete variant/i })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /cancel/i }))
+    expect(screen.queryByRole('dialog', { name: /delete variant/i })).not.toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('deletes the selected variant and advances snapshots to the next visible variant', async () => {
+    const openaiWorkspace = {
+      ...baseWorkspace,
+      selected: 'openai',
+      content: 'cv:\n  name: OpenAI Resume\n',
+      state: { hash: 'hash-openai', mtime_ns: 2 },
+      history: [
+        {
+          commit: 'open123',
+          short_commit: 'open123',
+          date: '2026-06-26',
+          message: 'OpenAI snapshot',
+        },
+      ],
+      variants: [
+        baseWorkspace.variants[0],
+        baseWorkspace.variants[1],
+        {
+          name: 'google',
+          has_pdf: false,
+          state: { hash: 'hash-google', mtime_ns: 3 },
+        },
+      ],
+      pdf_url: '/variants/openai/pdf',
+      preview_urls: ['/variants/openai/preview/1.png?v=2'],
+    }
+    const googleWorkspace = {
+      ...openaiWorkspace,
+      selected: 'google',
+      content: 'cv:\n  name: Google Resume\n',
+      state: { hash: 'hash-google', mtime_ns: 3 },
+      history: [
+        {
+          commit: 'goo123',
+          short_commit: 'goo123',
+          date: '2026-06-27',
+          message: 'Google snapshot',
+        },
+      ],
+      variants: [baseWorkspace.variants[0], { name: 'google', has_pdf: false, state: { hash: 'hash-google', mtime_ns: 3 } }],
+      pdf_url: null,
+      preview_urls: [],
+    }
+    const fetchMock = mockFetch((input, init) => {
+      if (String(input) === '/api/workspace') return jsonResponse(openaiWorkspace)
+      if (String(input) === '/api/variants/openai?next=google' && init?.method === 'DELETE') {
+        return jsonResponse(googleWorkspace)
+      }
+      return jsonResponse({ hash: 'hash-openai', mtime_ns: 2 })
+    })
+
+    renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: /variant actions for openai/i }))
+    const deleteButtons = screen.getAllByRole('button', { name: /delete variant/i })
+    await userEvent.click(deleteButtons[0])
+    await userEvent.click((await screen.findAllByRole('button', { name: /delete variant/i })).at(-1)!)
+
+    await waitFor(() => expect(screen.getByText('Variant deleted.')).toBeInTheDocument())
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/variants/openai?next=google',
+      expect.objectContaining({ method: 'DELETE' }),
+    )
+    expect(screen.queryByRole('button', { name: /openai/i })).not.toBeInTheDocument()
+    expect(screen.getAllByText('variants/google/resume.yaml').length).toBeGreaterThan(0)
+    expect(screen.getByText('Google snapshot')).toBeInTheDocument()
   })
 
   it('restores a snapshot from the snapshot action menu', async () => {

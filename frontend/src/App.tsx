@@ -6,7 +6,9 @@ import { EditorView } from '@codemirror/view'
 import {
   AlertCircle,
   CheckCircle2,
+  Copy,
   Clock3,
+  Search,
   Download,
   FileText,
   FolderOpen,
@@ -20,12 +22,14 @@ import {
   Save,
   Sparkles,
   Terminal,
+  Trash2,
   X,
 } from 'lucide-react'
 
 import {
   ApiError,
   createVariant,
+  deleteVariant,
   getVariantState,
   getWorkspace,
   initWorkspace,
@@ -65,6 +69,7 @@ import type { Workspace } from '@/types'
 type Action =
   | 'init'
   | 'create'
+  | 'delete'
   | 'save'
   | 'overwrite'
   | 'render'
@@ -328,6 +333,15 @@ function App() {
     )
   }
 
+  async function handleDeleteVariant(variant: string, next?: string) {
+    return runMutation(
+      'delete',
+      () => deleteVariant(variant, next),
+      applyWorkspace,
+      'Variant deleted.',
+    )
+  }
+
   function handleSelectVariant(variant: string) {
     setMessage(null)
     setRenderOutput('')
@@ -349,7 +363,7 @@ function App() {
   if (!initialized) {
     return (
       <main className="min-h-svh bg-background text-foreground">
-        <TopBar workspacePath={workspace?.workspace_path ?? ''} />
+        <TopBar filePath="" workspacePath={workspace?.workspace_path ?? ''} />
         <section className="mx-auto grid min-h-[calc(100svh-73px)] w-full max-w-5xl place-items-center px-5 py-10">
           <Card className="w-full max-w-xl border-dashed bg-card/90">
             <CardHeader>
@@ -411,15 +425,11 @@ function App() {
 
   return (
     <main className="min-h-svh bg-background text-foreground">
-      <TopBar workspacePath={workspace?.workspace_path ?? ''} />
+      <TopBar
+        filePath={`variants/${selected}/resume.yaml`}
+        workspacePath={workspace?.workspace_path ?? ''}
+      />
       <section className="flex h-[calc(100svh-73px)] flex-col gap-3 p-3 max-lg:h-auto">
-        <StatusStrip
-          dirtyLabel={draftLabel}
-          message={message}
-          updatedAt={workspace?.updated_at ?? 'missing'}
-          variant={selected}
-        />
-
         {isDesktop ? (
           <WorkbenchLayout
             editor={
@@ -427,8 +437,10 @@ function App() {
                 action={action}
                 content={editorContent}
                 dirty={dirty}
+                dirtyLabel={draftLabel}
                 diskChanged={diskChanged}
                 error={error}
+                message={message}
                 onChange={handleEditorChange}
                 onOverwrite={() => void handleSave(true)}
                 onRender={handleRender}
@@ -452,6 +464,7 @@ function App() {
               <VariantPanel
                 action={action}
                 onCreate={handleCreateVariant}
+                onDelete={handleDeleteVariant}
                 onRestore={handleRestore}
                 onSelect={handleSelectVariant}
                 selected={selected}
@@ -466,6 +479,7 @@ function App() {
             <VariantPanel
               action={action}
               onCreate={handleCreateVariant}
+              onDelete={handleDeleteVariant}
               onRestore={handleRestore}
               onSelect={handleSelectVariant}
               selected={selected}
@@ -477,8 +491,10 @@ function App() {
               action={action}
               content={editorContent}
               dirty={dirty}
+              dirtyLabel={draftLabel}
               diskChanged={diskChanged}
               error={error}
+              message={message}
               onChange={handleEditorChange}
               onOverwrite={() => void handleSave(true)}
               onRender={handleRender}
@@ -659,53 +675,72 @@ function LoadingShell() {
   )
 }
 
-function TopBar({ workspacePath }: { workspacePath: string }) {
+function TopBar({
+  filePath,
+  workspacePath,
+}: {
+  filePath: string
+  workspacePath: string
+}) {
+  const [copied, setCopied] = useState(false)
+  const normalizedWorkspacePath = workspacePath.replace(/\/+$/, '')
+  const fullPath = filePath
+    ? `${normalizedWorkspacePath}/${filePath}`.replace(/\/{2,}/g, '/')
+    : normalizedWorkspacePath
+
+  async function handleCopyPath() {
+    if (!fullPath) return
+
+    try {
+      await navigator.clipboard.writeText(fullPath)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1200)
+    } catch {
+      setCopied(false)
+    }
+  }
+
   return (
     <header className="flex min-h-[73px] items-center justify-between gap-4 border-b bg-card/85 px-4 py-3 shadow-[0_1px_0_rgba(24,32,29,0.03)]">
       <div className="min-w-0">
         <h1 className="type-title text-foreground">Resume Studio</h1>
       </div>
-      <Tooltip>
-        <TooltipTrigger
-          className="type-code max-w-[52vw] truncate rounded-md border bg-background/70 px-3 py-1.5 text-muted-foreground"
-          aria-label="Workspace path"
-        >
-          {workspacePath || 'Workspace not initialized'}
-        </TooltipTrigger>
-        <TooltipContent>{workspacePath || 'No workspace yet'}</TooltipContent>
-      </Tooltip>
+      <div className="flex min-w-0 max-w-[60vw] items-center justify-end gap-2 max-md:max-w-full max-md:w-full max-md:justify-start">
+        <Tooltip>
+          <TooltipTrigger
+            className="flex min-w-0 max-w-full items-center overflow-hidden rounded-lg border bg-background/55 text-left"
+            aria-label="Current path"
+          >
+            {filePath ? <span className="sr-only">{filePath}</span> : null}
+            <span className="type-code shrink-0 truncate border-r bg-[color:var(--surface-muted)] px-3 py-1.5 text-foreground max-md:max-w-[55%]">
+              {workspacePath || 'Workspace not initialized'}
+            </span>
+            {filePath ? (
+              <span className="type-code min-w-0 truncate bg-background px-3 py-1.5 text-muted-foreground">
+                /{filePath}
+              </span>
+            ) : null}
+          </TooltipTrigger>
+          <TooltipContent>{fullPath || 'No workspace yet'}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              aria-label={copied ? 'Path copied' : 'Copy path'}
+              className="size-8 shrink-0 rounded-lg"
+              disabled={!fullPath}
+              onClick={() => void handleCopyPath()}
+              size="icon"
+              type="button"
+              variant="outline"
+            >
+              {copied ? <CheckCircle2 className="size-4" /> : <Copy className="size-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{copied ? 'Copied' : 'Copy full path'}</TooltipContent>
+        </Tooltip>
+      </div>
     </header>
-  )
-}
-
-function StatusStrip({
-  dirtyLabel,
-  message,
-  updatedAt,
-  variant,
-}: {
-  dirtyLabel: string | null
-  message: string | null
-  updatedAt: string
-  variant: string
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 shadow-[0_1px_0_rgba(24,32,29,0.03)]">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="type-code inline-flex items-center rounded-md border bg-secondary/65 px-3 py-1 text-foreground">
-          variants/{variant}/resume.yaml
-        </span>
-        <span className="type-meta truncate">Last changed {updatedAt}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        {message && <span className="type-meta font-medium text-primary">{message}</span>}
-        {dirtyLabel && (
-          <span className="type-meta inline-flex items-center rounded-full border border-primary/20 bg-primary/8 px-2.5 py-1 font-medium text-primary">
-            {dirtyLabel}
-          </span>
-        )}
-      </div>
-    </div>
   )
 }
 
@@ -775,6 +810,7 @@ function ModalShell({
 function VariantPanel({
   action,
   onCreate,
+  onDelete,
   onRestore,
   onSelect,
   selected,
@@ -784,6 +820,7 @@ function VariantPanel({
 }: {
   action: Action
   onCreate: (event: FormEvent<HTMLFormElement>) => Promise<boolean>
+  onDelete: (variant: string, next?: string) => Promise<boolean>
   onRestore: (commit: string) => Promise<boolean>
   onSelect: (variant: string) => void
   selected: string
@@ -791,19 +828,39 @@ function VariantPanel({
   variantName: string
   workspace: Workspace | null
 }) {
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [openHistoryAction, setOpenHistoryAction] = useState<string | null>(null)
+  const [openVariantAction, setOpenVariantAction] = useState<string | null>(null)
+  const [pendingDeleteVariant, setPendingDeleteVariant] = useState<string | null>(null)
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const filteredVariants = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return workspace?.variants ?? []
+    return (workspace?.variants ?? []).filter((variant) =>
+      variant.name.toLowerCase().includes(query),
+    )
+  }, [searchQuery, workspace?.variants])
 
   useEffect(() => {
-    if (!openHistoryAction) return
+    if (!openHistoryAction && !openVariantAction && !pendingDeleteVariant) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpenHistoryAction(null)
+      if (event.key === 'Escape') setOpenVariantAction(null)
+      if (event.key === 'Escape') setPendingDeleteVariant(null)
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [openHistoryAction])
+  }, [openHistoryAction, openVariantAction, pendingDeleteVariant])
+
+  useEffect(() => {
+    if (!isSearchExpanded) return
+    searchInputRef.current?.focus()
+  }, [isSearchExpanded])
 
   async function handleCreateSubmit(event: FormEvent<HTMLFormElement>) {
     const ok = await onCreate(event)
@@ -815,10 +872,42 @@ function VariantPanel({
     setCreateOpen(false)
   }
 
+  function closeDeleteDialog() {
+    setPendingDeleteVariant(null)
+  }
+
+  function handleSearchBlur() {
+    if (!searchQuery) setIsSearchExpanded(false)
+  }
+
   async function handleRestoreFromMenu(commit: string) {
     const ok = await onRestore(commit)
     if (ok) setOpenHistoryAction(null)
   }
+
+  async function handleDeleteConfirm() {
+    if (!pendingDeleteVariant) return
+    const nextVariant =
+      pendingDeleteVariant === selected
+        ? (() => {
+            const index = filteredVariants.findIndex(
+              (variant) => variant.name === pendingDeleteVariant,
+            )
+            return (
+              filteredVariants[index + 1]?.name ??
+              filteredVariants[index - 1]?.name ??
+              workspace?.variants.find((variant) => variant.name === 'base')?.name
+            )
+          })()
+        : selected
+    const ok = await onDelete(pendingDeleteVariant, nextVariant)
+    if (ok) {
+      setPendingDeleteVariant(null)
+      setOpenVariantAction(null)
+    }
+  }
+
+  const canDeleteVariant = (workspace?.variants.length ?? 0) > 1
 
   return (
     <Card className="h-full rounded-lg shadow-[0_1px_0_rgba(24,32,29,0.03)]">
@@ -827,46 +916,125 @@ function VariantPanel({
           <CardTitle>Variants</CardTitle>
         </div>
         <CardAction>
-          <Button onClick={() => setCreateOpen(true)} size="sm" type="button" variant="outline">
-            <Plus data-icon="inline-start" />
-            New variant
-          </Button>
+          <div className="flex items-center gap-2">
+            {(isSearchExpanded || searchQuery) && (
+              <div className="relative w-36 min-w-0 sm:w-44">
+                <Search
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                  aria-label="Search variants"
+                  autoComplete="off"
+                  className="h-8 min-w-0 pl-8"
+                  id="variant-search"
+                  onBlur={handleSearchBlur}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search variants"
+                  ref={searchInputRef}
+                  value={searchQuery}
+                />
+              </div>
+            )}
+            {!isSearchExpanded && !searchQuery && (
+              <Button
+                aria-label="Search variants"
+                onClick={() => setIsSearchExpanded(true)}
+                size="icon-sm"
+                type="button"
+                variant="outline"
+              >
+                <Search />
+              </Button>
+            )}
+            <Button
+              aria-label="New variant"
+              onClick={() => setCreateOpen(true)}
+              size="icon-sm"
+              type="button"
+              variant="outline"
+            >
+              <Plus />
+            </Button>
+          </div>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col gap-5">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-4">
         <ScrollArea className="min-h-32 flex-1 pr-3">
           <nav className="flex flex-col gap-1" aria-label="Resume variants">
-            {workspace?.variants.map((variant) => (
-              <button
+            {filteredVariants.map((variant) => (
+              <div
                 className={cn(
-                  'grid grid-cols-[18px_1fr] gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-muted/80',
-                  variant.name === selected && 'bg-primary/10 ring-1 ring-primary/15',
+                  'grid grid-cols-[1fr_auto] items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/80',
+                  variant.name === selected && 'bg-primary/10 text-primary',
                 )}
                 key={variant.name}
-                onClick={() => onSelect(variant.name)}
-                type="button"
               >
-                <span className="relative flex justify-center">
-                  <span className="absolute bottom-[-0.6rem] top-5 w-px bg-border" />
-                  <span
-                    className={cn(
-                      'relative mt-0.5 grid size-4 place-items-center rounded-full border bg-card',
-                      variant.name === selected && 'border-primary bg-primary text-primary-foreground',
+                <button
+                  aria-label={variant.name}
+                  className="min-w-0 truncate text-left"
+                  onClick={() => onSelect(variant.name)}
+                  type="button"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <GitBranch
+                      className={cn(
+                        'size-3.5 shrink-0 text-muted-foreground',
+                        variant.name === selected && 'text-primary',
+                      )}
+                    />
+                    <span className="type-item-title truncate text-sm text-foreground">
+                      {variant.name}
+                    </span>
+                  </span>
+                </button>
+                {canDeleteVariant ? (
+                  <span className="relative flex items-start">
+                    <Button
+                      aria-label={`Variant actions for ${variant.name}`}
+                      onClick={(event) => {
+                        setOpenVariantAction((open) =>
+                          open === variant.name ? null : variant.name,
+                        )
+                      }}
+                      size="icon-sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <MoreHorizontal />
+                    </Button>
+                    {openVariantAction === variant.name && (
+                      <div className="absolute right-0 top-9 z-10 w-44 rounded-md border bg-popover p-1 shadow-md">
+                        <Button
+                          className="w-full justify-start text-destructive hover:text-destructive"
+                          disabled={action === 'delete'}
+                          onClick={(event) => {
+                            setPendingDeleteVariant(variant.name)
+                          }}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          {action === 'delete' && pendingDeleteVariant === variant.name ? (
+                            <Loader2 data-icon="inline-start" className="animate-spin" />
+                          ) : (
+                            <Trash2 data-icon="inline-start" />
+                          )}
+                          Delete variant
+                        </Button>
+                      </div>
                     )}
-                  >
-                    <GitBranch className="size-2.5" />
                   </span>
-                </span>
-                <span className="min-w-0 space-y-0.5">
-                  <span className="type-item-title block truncate text-foreground">
-                    {variant.name}
-                  </span>
-                  <span className="type-meta block">
-                    {variant.has_pdf ? 'Preview ready' : 'No preview'}
-                  </span>
-                </span>
-              </button>
+                ) : (
+                  <span aria-hidden="true" />
+                )}
+              </div>
             ))}
+            {filteredVariants.length === 0 && (
+              <p className="type-meta rounded-md border border-dashed p-3">
+                No variants match this search.
+              </p>
+            )}
           </nav>
         </ScrollArea>
 
@@ -940,7 +1108,7 @@ function VariantPanel({
         </section>
         {createOpen && (
           <ModalShell
-            description={`Copies from the selected variant: ${selected}.`}
+            description={`Create a new variant from ${selected}.`}
             onClose={closeCreateDialog}
             title="New variant"
           >
@@ -955,7 +1123,7 @@ function VariantPanel({
                     placeholder="openai-backend"
                     value={variantName}
                   />
-                  <FieldDescription>Copies from the selected variant.</FieldDescription>
+                  <FieldDescription>Starts from the current variant.</FieldDescription>
                 </Field>
               </FieldGroup>
               <div className="flex justify-end gap-2">
@@ -974,6 +1142,38 @@ function VariantPanel({
             </form>
           </ModalShell>
         )}
+        {pendingDeleteVariant && (
+          <ModalShell
+            description={`Delete variant "${pendingDeleteVariant}" and remove its files from the workspace.`}
+            onClose={closeDeleteDialog}
+            title="Delete variant"
+          >
+            <div className="flex flex-col gap-4">
+              <p className="type-meta">
+                This action cannot be undone from the variants pane. Snapshots for this
+                variant will no longer appear here after deletion.
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button onClick={closeDeleteDialog} type="button" variant="outline">
+                  Cancel
+                </Button>
+                <Button
+                  disabled={action === 'delete'}
+                  onClick={() => void handleDeleteConfirm()}
+                  type="button"
+                  variant="destructive"
+                >
+                  {action === 'delete' ? (
+                    <Loader2 data-icon="inline-start" className="animate-spin" />
+                  ) : (
+                    <Trash2 data-icon="inline-start" />
+                  )}
+                  Delete variant
+                </Button>
+              </div>
+            </div>
+          </ModalShell>
+        )}
       </CardContent>
     </Card>
   )
@@ -983,8 +1183,10 @@ function EditorPanel({
   action,
   content,
   dirty,
+  dirtyLabel,
   diskChanged,
   error,
+  message,
   onChange,
   onOverwrite,
   onRender,
@@ -997,8 +1199,10 @@ function EditorPanel({
   action: Action
   content: string
   dirty: boolean
+  dirtyLabel: string | null
   diskChanged: boolean
   error: string | null
+  message: string | null
   onChange: (value: string) => void
   onOverwrite: () => void
   onRender: () => void
@@ -1023,8 +1227,16 @@ function EditorPanel({
   return (
     <Card className="h-full rounded-lg shadow-[0_1px_0_rgba(24,32,29,0.03)]">
       <CardHeader>
-        <div>
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
           <CardTitle>Editor</CardTitle>
+          <span className="flex min-w-0 flex-wrap items-center justify-end gap-2 max-sm:w-full max-sm:justify-start">
+            {message && <span className="type-meta font-medium text-primary">{message}</span>}
+            {dirtyLabel && (
+              <span className="type-meta inline-flex items-center rounded-full border border-primary/20 bg-primary/8 px-2.5 py-1 font-medium text-primary">
+                {dirtyLabel}
+              </span>
+            )}
+          </span>
         </div>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col gap-3">

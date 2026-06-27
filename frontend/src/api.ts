@@ -91,6 +91,13 @@ export function snapshotVariant(variant: string, message: string) {
   )
 }
 
+export function deleteVariant(variant: string, next?: string) {
+  const query = next ? `?next=${encodeURIComponent(next)}` : ''
+  return request<Workspace>(`/api/variants/${encodeURIComponent(variant)}${query}`, {
+    method: 'DELETE',
+  })
+}
+
 export function restoreVariant(variant: string, commit: string) {
   return request<Workspace>(
     `/api/variants/${encodeURIComponent(variant)}/restore/${encodeURIComponent(commit)}`,

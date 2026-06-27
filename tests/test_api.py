@@ -70,6 +70,56 @@ def test_create_variant_returns_new_selection(tmp_path, monkeypatch):
     ]
 
 
+def test_delete_variant_removes_directory_and_returns_next_selection(tmp_path, monkeypatch):
+    workspace = WorkspaceService(tmp_path)
+    workspace.init_workspace()
+    workspace.create_variant("OpenAI", "base")
+    workspace.create_variant("Google", "base")
+    client = client_for(tmp_path, monkeypatch)
+
+    response = client.delete("/api/variants/openai?next=google")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected"] == "google"
+    assert [variant["name"] for variant in payload["variants"]] == ["base", "google"]
+    assert not (tmp_path / "variants" / "openai").exists()
+
+
+def test_delete_variant_rejects_base(tmp_path, monkeypatch):
+    WorkspaceService(tmp_path).init_workspace()
+    client = client_for(tmp_path, monkeypatch)
+
+    response = client.delete("/api/variants/base")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "At least one variant must remain."
+
+
+def test_delete_base_variant_when_other_variant_exists(tmp_path, monkeypatch):
+    workspace = WorkspaceService(tmp_path)
+    workspace.init_workspace()
+    workspace.create_variant("OpenAI", "base")
+    client = client_for(tmp_path, monkeypatch)
+
+    response = client.delete("/api/variants/base?next=openai")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected"] == "openai"
+    assert [variant["name"] for variant in payload["variants"]] == ["openai"]
+
+
+def test_delete_variant_rejects_missing_variant(tmp_path, monkeypatch):
+    WorkspaceService(tmp_path).init_workspace()
+    client = client_for(tmp_path, monkeypatch)
+
+    response = client.delete("/api/variants/missing")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Variant 'missing' does not exist."
+
+
 def test_save_resume_updates_content_and_hash(tmp_path, monkeypatch):
     workspace = WorkspaceService(tmp_path)
     workspace.init_workspace()

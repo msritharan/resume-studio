@@ -243,6 +243,18 @@ async def api_snapshot_variant(variant: str, payload: SnapshotRequest):
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
+@app.delete("/api/variants/{variant}", response_model=WorkspaceResponse)
+async def api_delete_variant(
+    variant: str, next_variant: Optional[str] = Query(default=None, alias="next")
+):
+    workspace, _, _ = services()
+    try:
+        workspace.delete_variant(variant)
+        return workspace_response(next_variant)
+    except ResumeStudioError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
 @app.post("/api/variants/{variant}/restore/{commit}", response_model=WorkspaceResponse)
 async def api_restore_variant(variant: str, commit: str):
     _, git, _ = services()

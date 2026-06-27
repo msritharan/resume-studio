@@ -34,6 +34,26 @@ def test_create_variant_copies_only_resume_yaml(tmp_path):
     assert not (tmp_path / "variants" / "openai-backend" / "job.md").exists()
 
 
+def test_delete_variant_removes_selected_directory(tmp_path):
+    workspace = WorkspaceService(tmp_path)
+    workspace.init_workspace()
+    workspace.create_variant("OpenAI", "base")
+
+    workspace.delete_variant("openai")
+
+    assert not (tmp_path / "variants" / "openai").exists()
+
+
+def test_delete_base_variant_when_another_variant_exists(tmp_path):
+    workspace = WorkspaceService(tmp_path)
+    workspace.init_workspace()
+    workspace.create_variant("OpenAI", "base")
+
+    workspace.delete_variant("base")
+
+    assert not (tmp_path / "variants" / "base").exists()
+
+
 def test_save_writes_without_committing(tmp_path):
     workspace = WorkspaceService(tmp_path)
     git = GitService(tmp_path)
