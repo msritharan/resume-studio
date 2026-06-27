@@ -712,11 +712,11 @@ function TopBar({
             aria-label="Current path"
           >
             {filePath ? <span className="sr-only">{filePath}</span> : null}
-            <span className="type-code shrink-0 truncate border-r bg-[color:var(--surface-muted)] px-3 py-1.5 text-foreground max-md:max-w-[55%]">
+            <span className="type-code shrink-0 truncate border-r bg-background px-3 py-1.5 text-foreground max-md:max-w-[55%]">
               {workspacePath || 'Workspace not initialized'}
             </span>
             {filePath ? (
-              <span className="type-code min-w-0 truncate bg-background px-3 py-1.5 text-muted-foreground">
+              <span className="type-code min-w-0 truncate bg-[color:var(--surface-muted)] px-3 py-1.5 text-muted-foreground">
                 /{filePath}
               </span>
             ) : null}

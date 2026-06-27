@@ -155,12 +155,22 @@ class WorkspaceService:
         slug = assert_safe_variant_name(name)
         source_slug = assert_safe_variant_name(source)
         target = self.variants_dir / slug
-        if target.exists():
-            raise ResumeStudioError(f"Variant '{slug}' already exists.")
         source_resume = self.variants_dir / source_slug / "resume.yaml"
         if not source_resume.exists():
             raise ResumeStudioError(f"Source variant '{source_slug}' does not exist.")
-        target.mkdir(parents=True)
+        if target.exists():
+            if not target.is_dir():
+                raise ResumeStudioError(f"Variant '{slug}' already exists.")
+            if (target / "resume.yaml").exists():
+                raise ResumeStudioError(f"Variant '{slug}' already exists.")
+            non_ignorable_entries = [
+                entry.name for entry in target.iterdir() if entry.name != ".DS_Store"
+            ]
+            if non_ignorable_entries:
+                raise ResumeStudioError(
+                    f"Variant directory '{slug}' already exists and is not empty."
+                )
+        target.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_resume, target / "resume.yaml")
         return slug
 

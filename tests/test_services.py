@@ -34,6 +34,19 @@ def test_create_variant_copies_only_resume_yaml(tmp_path):
     assert not (tmp_path / "variants" / "openai-backend" / "job.md").exists()
 
 
+def test_create_variant_reuses_existing_empty_directory(tmp_path):
+    workspace = WorkspaceService(tmp_path)
+    workspace.init_workspace()
+    target = tmp_path / "variants" / "google"
+    target.mkdir(parents=True)
+    (target / ".DS_Store").write_text("", encoding="utf-8")
+
+    slug = workspace.create_variant("Google", "base")
+
+    assert slug == "google"
+    assert (target / "resume.yaml").exists()
+
+
 def test_delete_variant_removes_selected_directory(tmp_path):
     workspace = WorkspaceService(tmp_path)
     workspace.init_workspace()

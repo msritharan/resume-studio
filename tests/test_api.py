@@ -70,6 +70,25 @@ def test_create_variant_returns_new_selection(tmp_path, monkeypatch):
     ]
 
 
+def test_create_variant_reuses_existing_empty_directory(tmp_path, monkeypatch):
+    workspace = WorkspaceService(tmp_path)
+    workspace.init_workspace()
+    target = tmp_path / "variants" / "google"
+    target.mkdir(parents=True)
+    (target / ".DS_Store").write_text("", encoding="utf-8")
+    client = client_for(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/variants",
+        json={"name": "Google", "source": "base"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected"] == "google"
+    assert (target / "resume.yaml").exists()
+
+
 def test_delete_variant_removes_directory_and_returns_next_selection(tmp_path, monkeypatch):
     workspace = WorkspaceService(tmp_path)
     workspace.init_workspace()
