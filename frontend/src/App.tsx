@@ -1043,23 +1043,22 @@ function VariantPanel({
         <section className="flex min-h-0 flex-1 flex-col gap-3">
           <div>
             <h2 className="type-subsection">Snapshots</h2>
-            <p className="type-meta">Saved points for the selected variant.</p>
           </div>
           <ScrollArea className="min-h-36 flex-1 pr-3">
             {workspace?.history.length ? (
               <ol className="flex flex-col">
                 {workspace.history.map((entry) => (
-                  <li className="grid grid-cols-[18px_1fr] gap-3" key={entry.commit}>
+                  <li className="grid grid-cols-[16px_1fr] gap-2.5" key={entry.commit}>
                     <span className="relative flex justify-center">
-                      <span className="absolute bottom-0 top-5 w-px bg-border" />
-                      <span className="relative mt-1 size-3 rounded-full border border-primary bg-card" />
+                      <span className="absolute bottom-0 top-4.5 w-px bg-border" />
+                      <span className="relative mt-1 size-2.5 rounded-full border border-primary bg-card" />
                     </span>
-                    <div className="relative flex min-w-0 items-start justify-between gap-2 rounded-md px-2 py-2 hover:bg-muted/70">
-                      <div className="min-w-0 space-y-0.5">
-                        <p className="type-item-title truncate text-foreground">
+                    <div className="relative flex min-w-0 items-start justify-between gap-1.5 rounded-md px-1.5 py-1.5 hover:bg-muted/55">
+                      <div className="min-w-0 space-y-0.5 pr-2">
+                        <p className="truncate text-[13px] font-medium leading-5 text-foreground">
                           {entry.message}
                         </p>
-                        <p className="type-code text-muted-foreground">
+                        <p className="type-code text-[11px] leading-4 text-muted-foreground">
                           {entry.date} · {entry.short_commit}
                         </p>
                       </div>
@@ -1077,7 +1076,7 @@ function VariantPanel({
                         <MoreHorizontal />
                       </Button>
                       {openHistoryAction === entry.commit && (
-                        <div className="absolute right-2 top-9 z-10 w-44 rounded-md border bg-popover p-1 shadow-md">
+                        <div className="absolute right-1.5 top-8 z-10 w-44 rounded-md border bg-popover p-1 shadow-md">
                           <Button
                             className="w-full justify-start"
                             disabled={action === 'restore'}
